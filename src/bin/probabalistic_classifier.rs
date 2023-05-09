@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
-use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file};
+use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement};
 use clap::{Parser};
 use log::info;
 use statrs::distribution::{Binomial, DiscreteCDF};
@@ -28,7 +28,19 @@ struct Args {
 
     #[arg()]
     /// k-mers to test
-    k_mer_size: usize,
+    kmer_len: usize,
+}
+
+fn insert_kmers(set_ref: &mut HashSet<u64>, seq: String, kmer_len: usize) {
+    for index in 0..(seq.len() - kmer_len) {
+        let kmer = &seq[index..(index + kmer_len)];
+        if kmer.contains("N") {
+            continue
+        }
+        let mut hasher = DefaultHasher::new();
+        kmer.hash(&mut hasher);
+        set_ref.insert(hasher.finish());
+    }
 }
 
 fn main() {
@@ -45,48 +57,33 @@ fn main() {
     let mut database = HashMap::new();
 
     // Insert points into the database
-    let mut ref_fasta_iter = create_fasta_iterator_from_file(reference_file);
-    while let Some(Ok(record)) = ref_fasta_iter.next() {
-        let accession = String::from(record.id());
-        let accession_set = match database.get_mut(&*accession) {
+    for record in create_fasta_iterator_from_file(reference_file) {
+        let record = record.unwrap();
+        let accession_set = match database.get_mut(record.id()) {
             None => {
-                database.insert(accession.clone(), HashSet::new());
-                database.get_mut(&*accession).unwrap()
+                database.insert(String::from(record.id()), HashSet::new());
+                database.get_mut(record.id()).unwrap()
             },
             Some(set) => set
         };
         let uppercase_record_seq = convert_to_uppercase(record.seq());
-        for index in 0..(uppercase_record_seq.len() - args.k_mer_size) {
-            let kmer = &uppercase_record_seq[index..(index + args.k_mer_size)];
-            if kmer.contains("N") {
-                continue
-            }
-            let mut hasher = DefaultHasher::new();
-            kmer.hash(&mut hasher);
-            accession_set.insert(hasher.finish());
-        }
+        let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
+        insert_kmers(accession_set, uppercase_record_seq, args.kmer_len);
+        insert_kmers(accession_set, reverse_complement_seq, args.kmer_len);
     }
 
     let mut probabilities = HashMap::new();
     for (accession, kmer_set) in &database {
-        let probability = kmer_set.len() as f64 / 4_usize.pow(args.k_mer_size as u32) as f64;
+        let probability = kmer_set.len() as f64 / 4_usize.pow(args.kmer_len as u32) as f64;
         probabilities.insert(accession.clone(), probability);
     }
 
-    info!("Beginning classificaiton");
-    let mut reads_fasta_iter = create_fasta_iterator_from_file(reads_file);
-    while let Some(Ok(read)) = reads_fasta_iter.next() {
+    info!("Beginning classification");
+    for read in create_fasta_iterator_from_file(reads_file) {
+        let read = read.unwrap();
         let mut read_kmers = HashSet::new();
         let uppercase_record_seq = convert_to_uppercase(read.seq());
-        for index in 0..(uppercase_record_seq.len() - args.k_mer_size) {
-            let kmer = &uppercase_record_seq[index..(index + args.k_mer_size)];
-            if kmer.contains("N") {
-                continue
-            }
-            let mut hasher = DefaultHasher::new();
-            kmer.hash(&mut hasher);
-            read_kmers.insert( hasher.finish());
-        }
+        insert_kmers(&mut read_kmers, uppercase_record_seq, args.kmer_len);
 
         let num_queries = read_kmers.len();
         let mut hit_counts = HashMap::new();
