@@ -13,3 +13,5 @@ statrs = "*"
 clap = { version = "*", features = ["derive"] }
 bincode = "*"
 serde = {version = "*", features = ["derive"]}
+f128 = "*"
+num-traits = "*"
