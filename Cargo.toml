@@ -1,0 +1,15 @@
+[package]
+name = "probabilitic-classifier"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+env_logger = "*"
+log = "*"
+bio = "*"
+statrs = "*"
+clap = { version = "*", features = ["derive"] }
+bincode = "*"
+serde = {version = "*", features = ["derive"]}
