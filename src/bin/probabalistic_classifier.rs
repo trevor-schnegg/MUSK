@@ -81,7 +81,7 @@ fn main() {
         probabilities.insert(accession.clone(), probability);
     }
 
-    let needed_probability = f128::from(0.000000000000000000001);
+    let needed_probability = f128::from(1.0e-100);
     info!("Beginning classification");
     let mut read_iter = create_fasta_iterator_from_file(reads_file);
     while let Some(Ok(read)) = read_iter.next() {

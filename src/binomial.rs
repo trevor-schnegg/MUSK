@@ -5,7 +5,7 @@ use statrs::statistics::{Max, Min};
 use num_traits::float::Float;
 use num_traits::Zero;
 
-const F128_PREC: f128 = f128::EPSILON;
+// const F128_PREC: f128 = f128::EPSILON;
 
 pub fn ulps_eq(a: f128, b: f128) -> bool {
     if (a - b).abs() < f128::MIN_POSITIVE_NORMAL {
@@ -79,8 +79,8 @@ impl Binomial {
                     .exp()
             };
             let symm_transform = x >= (a + f128::ONE) / (a + b + f128::TWO);
-            let eps = F128_PREC;
-            let fpmin = f128::MIN_POSITIVE / eps;
+            let eps = f128::EPSILON;
+            let fpmin = f128::MIN_POSITIVE_NORMAL;
 
             let mut a = a;
             let mut b = b;
