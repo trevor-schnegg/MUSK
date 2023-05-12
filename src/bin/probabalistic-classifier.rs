@@ -1,6 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement};
 use clap::{Parser};
@@ -10,6 +8,7 @@ use f128::f128;
 use statrs::distribution::DiscreteCDF;
 use probabilitic_classifier::binomial::{Binomial, ulps_eq};
 use probabilitic_classifier::taxonomy::get_accession_to_tax_id;
+use probabilitic_classifier::database::Database;
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -34,15 +33,13 @@ struct Args {
     kmer_len: usize,
 }
 
-fn insert_kmers(set_ref: &mut HashSet<u64>, seq: String, kmer_len: usize) {
+fn insert_kmers(set_ref: &mut HashSet<Vec<u8>>, seq: String, kmer_len: usize) {
     for index in 0..(seq.len() - kmer_len) {
         let kmer = &seq[index..(index + kmer_len)];
         if kmer.contains("N") {
             continue
         }
-        let mut hasher = DefaultHasher::new();
-        kmer.hash(&mut hasher);
-        set_ref.insert(hasher.finish());
+        set_ref.insert(Vec::from(kmer.as_bytes()));
     }
 }
 
@@ -57,29 +54,17 @@ fn main() {
 
     // Get accession2taxid and initialize the "database"
     let accession2taxid = get_accession_to_tax_id(taxonomy_dir, reference_file);
-    let mut database = HashMap::new();
+    let mut database = Database::new(args.kmer_len);
 
     // Insert points into the database
-    for record in create_fasta_iterator_from_file(reference_file) {
-        let record = record.unwrap();
-        let accession_set = match database.get_mut(record.id()) {
-            None => {
-                database.insert(String::from(record.id()), HashSet::new());
-                database.get_mut(record.id()).unwrap()
-            },
-            Some(set) => set
-        };
+    let mut record_iter = create_fasta_iterator_from_file(reads_file);
+    while let Some(Ok(record)) = record_iter.next() {
         let uppercase_record_seq = convert_to_uppercase(record.seq());
         let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
-        insert_kmers(accession_set, uppercase_record_seq, args.kmer_len);
-        insert_kmers(accession_set, reverse_complement_seq, args.kmer_len);
+        database.insert_records(record.id().to_string(), vec![uppercase_record_seq, reverse_complement_seq])
     }
 
-    let mut probabilities = HashMap::new();
-    for (accession, kmer_set) in &database {
-        let probability = kmer_set.len() as f64 / 4_usize.pow(args.kmer_len as u32) as f64;
-        probabilities.insert(accession.clone(), probability);
-    }
+    database.init_probabilities();
 
     let needed_probability = f128::from(1.0e-100);
     info!("Beginning classification");
@@ -89,42 +74,42 @@ fn main() {
         let uppercase_record_seq = convert_to_uppercase(read.seq());
         insert_kmers(&mut read_kmers, uppercase_record_seq, args.kmer_len);
 
-        let num_queries = read_kmers.len();
+        let num_queries = read_kmers.len() as u64;
         let mut hit_counts = HashMap::new();
         for kmer in read_kmers {
-            for (accession, kmer_set) in &database {
-                if kmer_set.contains(&kmer) {
-                    match hit_counts.get_mut(&*accession) {
-                        None => {
-                            hit_counts.insert(accession.clone(), 0);
-                            *hit_counts.get_mut(&*accession).unwrap() += 1
-                        },
-                        Some(count) => *count += 1,
-                    };
+            match database.query(&*kmer) {
+                None => {continue}
+                Some(vec) => {
+                    for index in vec {
+                        match hit_counts.get_mut(index) {
+                            None => {hit_counts.insert(*index, 1_u64);}
+                            Some(count) => {*count += 1}
+                        }
+                    }
                 }
             }
         }
 
         let mut best_prob = f128::MAX;
-        let mut best_prob_tax_id = 0_u32;
+        let mut best_prob_index = 0_u32;
         let mut zero_seen = false;
-        for (accession, num_hits) in hit_counts {
-            let binomial = Binomial::new(f128::from(*probabilities.get(&*accession).unwrap()), num_queries as u64).unwrap();
+        for (index, num_hits) in hit_counts {
+            let binomial = Binomial::new(f128::from(database.get_probability_of_index(index as usize)), num_queries).unwrap();
             let prob = binomial.sf(num_hits).abs();
             if ulps_eq(f128::ZERO, prob) {
                 zero_seen = true;
-                println!("{}\t{}", read.id(), accession2taxid.get(&*accession).unwrap());
+                println!("{}\t{}", read.id(), accession2taxid.get(database.get_accession_of_index(index as usize)).unwrap());
             }
             // println!("{}", prob);
             // println!("taxid={}, binomial with p={}, n={}, x={}", tax_id, *probabilities.get(tax_id).unwrap(), num_queries, num_hits);
             if prob < best_prob {
                 best_prob = prob;
-                best_prob_tax_id = accession2taxid.get(&*accession).unwrap().clone();
+                best_prob_index = accession2taxid.get(database.get_accession_of_index(index as usize)).unwrap().clone();
             }
         }
         if !zero_seen {
             if best_prob < needed_probability {
-                println!("{}\t{}", read.id(), best_prob_tax_id);
+                println!("{}\t{}", read.id(), best_prob_index);
             } else {
                 println!("{}\t0", read.id())
             }
