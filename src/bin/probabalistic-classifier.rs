@@ -102,8 +102,11 @@ fn main() {
         for kmer in read_kmers {
             match fmindex.backward_search(kmer.as_bytes().iter()) {
                 Complete(interval) => {
-                    for location in interval.occ(&sa) {
-                        let accession = database_stats.get_accession_of_index(location);
+                    let mut accessions = HashSet::new();
+                    for accession in interval.occ(&sa).iter().map(|x| database_stats.get_accession_of_index(*x)) {
+                        accessions.insert(accession);
+                    }
+                    for accession in accessions {
                         match hit_counts.get_mut(&accession) {
                             None => {hit_counts.insert(accession, 1);},
                             Some(count) => {*count += 1},
