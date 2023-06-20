@@ -5,10 +5,8 @@ use std::path::Path;
 use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement};
 use clap::{Parser};
 use log::info;
-use num_traits::Float;
-use f128::f128;
-use statrs::distribution::DiscreteCDF;
-use probabilitic_classifier::binomial::{Binomial, ulps_eq};
+use rug::Float;
+use probabilitic_classifier::binomial::{Binomial};
 use probabilitic_classifier::taxonomy::get_accession_to_tax_id;
 
 /// Converts a fasta file to a database
@@ -81,7 +79,7 @@ fn main() {
         probabilities.insert(accession.clone(), probability);
     }
 
-    let needed_probability = f128::from(1.0e-100);
+    let needed_probability = Float::with_val(256, 1.0e-100);
     info!("Beginning classification");
     let mut read_iter = create_fasta_iterator_from_file(reads_file);
     while let Some(Ok(read)) = read_iter.next() {
@@ -105,29 +103,20 @@ fn main() {
             }
         }
 
-        let mut best_prob = f128::MAX;
+        let mut best_prob = Float::with_val(256, 1.0);
         let mut best_prob_tax_id = 0_u32;
-        let mut zero_seen = false;
         for (accession, num_hits) in hit_counts {
-            let binomial = Binomial::new(f128::from(*probabilities.get(&*accession).unwrap()), num_queries as u64).unwrap();
+            let binomial = Binomial::new(Float::with_val(256, *probabilities.get(&*accession).unwrap()), num_queries as u64).unwrap();
             let prob = binomial.sf(num_hits).abs();
-            if ulps_eq(f128::ZERO, prob) {
-                zero_seen = true;
-                println!("{}\t{}", read.id(), accession2taxid.get(&*accession).unwrap());
-            }
-            // println!("{}", prob);
-            // println!("taxid={}, binomial with p={}, n={}, x={}", tax_id, *probabilities.get(tax_id).unwrap(), num_queries, num_hits);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_tax_id = accession2taxid.get(&*accession).unwrap().clone();
             }
         }
-        if !zero_seen {
-            if best_prob < needed_probability {
-                println!("{}\t{}", read.id(), best_prob_tax_id);
-            } else {
-                println!("{}\t0", read.id())
-            }
+        if best_prob < needed_probability {
+            println!("{}\t{}", read.id(), best_prob_tax_id);
+        } else {
+            println!("{}\t0", read.id())
         }
     } // end read iterator
     info!("Done!")
