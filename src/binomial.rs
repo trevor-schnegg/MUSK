@@ -1,15 +1,14 @@
-use statrs::{StatsError};
-use rug::{Assign};
-use rug::Float;
-use rug::ops::CompleteRound;
 use crate::constants::Constants;
-
+use rug::ops::CompleteRound;
+use rug::Assign;
+use rug::Float;
+use statrs::StatsError;
 
 #[derive(Debug)]
 pub struct Binomial {
     p: Float,
     n: u64,
-    constants: Constants
+    constants: Constants,
 }
 
 impl Binomial {
@@ -20,7 +19,7 @@ impl Binomial {
             Err(StatsError::BadParams)
         } else {
             let constants = Constants::new();
-            Ok(Binomial { p, n, constants})
+            Ok(Binomial { p, n, constants })
         }
     }
 
@@ -37,7 +36,11 @@ impl Binomial {
             self.constants.zero.clone()
         } else {
             let k = x;
-            self.beta_reg(Float::with_val(256, k) + &self.constants.one, Float::with_val(256, self.n - k), self.p.clone())
+            self.beta_reg(
+                Float::with_val(256, k) + &self.constants.one,
+                Float::with_val(256, self.n - k),
+                self.p.clone(),
+            )
         }
     }
 
@@ -56,12 +59,16 @@ impl Binomial {
             let bt = if x.is_zero() || x == self.constants.one {
                 self.constants.zero.clone()
             } else {
-                (self.ln_gamma((&a + &b).complete(256)) - self.ln_gamma(a.clone()) - self.ln_gamma(b.clone())
+                (self.ln_gamma((&a + &b).complete(256))
+                    - self.ln_gamma(a.clone())
+                    - self.ln_gamma(b.clone())
                     + &a * x.clone().ln()
                     + &b * (&self.constants.one - &x).complete(256).ln())
-                    .exp()
+                .exp()
             };
-            let symm_transform = x >= (&a + &self.constants.one).complete(256) / ((&a + &b).complete(256) + &self.constants.two);
+            let symm_transform = x
+                >= (&a + &self.constants.one).complete(256)
+                    / ((&a + &b).complete(256) + &self.constants.two);
             let eps = self.constants.eps.clone();
             // let fpmin = constants::FPMIN;
 
@@ -79,7 +86,8 @@ impl Binomial {
             let qap = (&a + &self.constants.one).complete(256);
             let qam = (&a - &self.constants.one).complete(256);
             let mut c = self.constants.one.clone();
-            let mut d = Float::with_val(256, &self.constants.one - (&qab * &x).complete(256) / &qap);
+            let mut d =
+                Float::with_val(256, &self.constants.one - (&qab * &x).complete(256) / &qap);
             // if d.abs() < fpmin {
             //     d = fpmin;
             // }
@@ -90,7 +98,10 @@ impl Binomial {
                 let m = Float::with_val(256, m);
                 let m2 = (&m * &self.constants.two).complete(256);
                 let mut aa = Float::new(256);
-                aa.assign(&m * (&b - &m).complete(256) * &x / ((&qam + &m2).complete(256) * (&a + &m2).complete(256)));
+                aa.assign(
+                    &m * (&b - &m).complete(256) * &x
+                        / ((&qam + &m2).complete(256) * (&a + &m2).complete(256)),
+                );
                 d = (&self.constants.one + &aa * &d).complete(256);
 
                 // if d.abs() < fpmin {
@@ -104,7 +115,10 @@ impl Binomial {
 
                 d = (&self.constants.one / &d).complete(256);
                 h.assign((&h * &d).complete(256) * &c);
-                aa.assign(-(&a + &m).complete(256) * (&qab + &m).complete(256) * &x / ((&a + &m2).complete(256) * (&qap + &m2).complete(256)));
+                aa.assign(
+                    -(&a + &m).complete(256) * (&qab + &m).complete(256) * &x
+                        / ((&a + &m2).complete(256) * (&qap + &m2).complete(256)),
+                );
                 d = (&self.constants.one + &aa * &d).complete(256);
 
                 // if d.abs() < fpmin {
@@ -140,26 +154,40 @@ impl Binomial {
 
     fn ln_gamma(&self, x: Float) -> Float {
         if x < Float::with_val(256, 0.5) {
-            let s = self.constants.gamma_dk
+            let s = self
+                .constants
+                .gamma_dk
                 .iter()
                 .enumerate()
                 .skip(1)
-                .fold(self.constants.gamma_dk[0].clone(), |s, t| s + t.1 / (Float::with_val(256, t.0) - &x));
+                .fold(self.constants.gamma_dk[0].clone(), |s, t| {
+                    s + t.1 / (Float::with_val(256, t.0) - &x)
+                });
             &self.constants.ln_pi
                 - (&self.constants.pi * &x).complete(256).sin().ln()
                 - s.ln()
                 - &self.constants.ln_2_sqrt_e_over_pi
-                - (Float::with_val(256, 0.5) - &x) * ((Float::with_val(256, 0.5) - x + &self.constants.gamma_r) / &self.constants.e).ln()
+                - (Float::with_val(256, 0.5) - &x)
+                    * ((Float::with_val(256, 0.5) - x + &self.constants.gamma_r)
+                        / &self.constants.e)
+                        .ln()
         } else {
-            let s = self.constants.gamma_dk
+            let s = self
+                .constants
+                .gamma_dk
                 .iter()
                 .enumerate()
                 .skip(1)
-                .fold(self.constants.gamma_dk[0].clone(), |s, t| s + t.1 / (&x + Float::with_val(256, t.0) - &self.constants.one));
+                .fold(self.constants.gamma_dk[0].clone(), |s, t| {
+                    s + t.1 / (&x + Float::with_val(256, t.0) - &self.constants.one)
+                });
 
             s.ln()
                 + &self.constants.ln_2_sqrt_e_over_pi
-                + (&x - Float::with_val(256, 0.5)) * ((x - Float::with_val(256, 0.5) + &self.constants.gamma_r) / &self.constants.e).ln()
+                + (&x - Float::with_val(256, 0.5))
+                    * ((x - Float::with_val(256, 0.5) + &self.constants.gamma_r)
+                        / &self.constants.e)
+                        .ln()
         }
     }
 }

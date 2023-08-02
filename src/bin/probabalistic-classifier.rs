@@ -1,13 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use clap::Parser;
+use log::info;
+use probabilitic_classifier::binomial::Binomial;
+use probabilitic_classifier::taxonomy::get_accession_to_tax_id;
+use probabilitic_classifier::utility::{
+    convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement,
+};
+use rug::Float;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::Path;
-use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement};
-use clap::{Parser};
-use log::info;
-use rug::Float;
-use probabilitic_classifier::binomial::{Binomial};
-use probabilitic_classifier::taxonomy::get_accession_to_tax_id;
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -36,7 +38,7 @@ fn insert_kmers(set_ref: &mut HashSet<u64>, seq: String, kmer_len: usize) {
     for index in 0..(seq.len() - kmer_len) {
         let kmer = &seq[index..(index + kmer_len)];
         if kmer.contains("N") {
-            continue
+            continue;
         }
         let mut hasher = DefaultHasher::new();
         kmer.hash(&mut hasher);
@@ -64,8 +66,8 @@ fn main() {
             None => {
                 database.insert(String::from(record.id()), HashSet::new());
                 database.get_mut(record.id()).unwrap()
-            },
-            Some(set) => set
+            }
+            Some(set) => set,
         };
         let uppercase_record_seq = convert_to_uppercase(record.seq());
         let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
@@ -96,7 +98,7 @@ fn main() {
                         None => {
                             hit_counts.insert(accession.clone(), 0);
                             *hit_counts.get_mut(&*accession).unwrap() += 1
-                        },
+                        }
                         Some(count) => *count += 1,
                     };
                 }
@@ -106,7 +108,11 @@ fn main() {
         let mut best_prob = Float::with_val(256, 1.0);
         let mut best_prob_tax_id = 0_u32;
         for (accession, num_hits) in hit_counts {
-            let binomial = Binomial::new(Float::with_val(256, *probabilities.get(&*accession).unwrap()), num_queries as u64).unwrap();
+            let binomial = Binomial::new(
+                Float::with_val(256, *probabilities.get(&*accession).unwrap()),
+                num_queries as u64,
+            )
+            .unwrap();
             let prob = binomial.sf(num_hits).abs();
             if prob < best_prob {
                 best_prob = prob;
@@ -120,5 +126,4 @@ fn main() {
         }
     } // end read iterator
     info!("Done!")
-
 } // end main

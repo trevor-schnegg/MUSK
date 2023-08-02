@@ -1,6 +1,5 @@
-use rug::Float;
 use rug::float::{Constant, Special};
-
+use rug::Float;
 
 #[derive(Debug)]
 pub struct Constants {
@@ -26,7 +25,10 @@ impl Constants {
             pi: Float::with_val(256, Constant::Pi),
             e: Float::with_val(256, std::f64::consts::E),
             ln_pi: Float::with_val(256, 1.1447298858494001741434273513530587116472948129153),
-            ln_2_sqrt_e_over_pi: Float::with_val(256, 0.6207822376352452223455184457816472122518527279025978),
+            ln_2_sqrt_e_over_pi: Float::with_val(
+                256,
+                0.6207822376352452223455184457816472122518527279025978,
+            ),
             gamma_r: Float::with_val(256, 10.900511),
             gamma_dk: Vec::from([
                 Float::with_val(256, 2.48574089138753565546e-5),
@@ -39,7 +41,8 @@ impl Constants {
                 Float::with_val(256, 1.70970543404441224307e-2),
                 Float::with_val(256, -5.71926117404305781283e-4),
                 Float::with_val(256, 4.63399473359905636708e-6),
-                Float::with_val(256, -2.71994908488607703910e-9)]),
+                Float::with_val(256, -2.71994908488607703910e-9),
+            ]),
         }
     }
 }

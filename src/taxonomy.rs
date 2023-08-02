@@ -125,4 +125,3 @@ pub fn get_accession_to_tax_id(taxonomy_dir: &Path, fasta_file: &Path) -> HashMa
         }
     }
 }
-

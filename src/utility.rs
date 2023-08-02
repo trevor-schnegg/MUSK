@@ -1,5 +1,5 @@
 use bio::io::fasta;
-use bio::io::fasta::{Records};
+use bio::io::fasta::Records;
 use bio::utils::TextSlice;
 use std::fs::File;
 use std::io::BufReader;
