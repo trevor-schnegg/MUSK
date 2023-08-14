@@ -1,11 +1,13 @@
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 use probabilitic_classifier::database::Database;
 use probabilitic_classifier::taxonomy::get_accession_to_tax_id;
 use probabilitic_classifier::utility::{
     convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement,
 };
 use std::path::Path;
+use threadpool::ThreadPool;
+use std::sync::{Arc, mpsc};
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -63,16 +65,29 @@ fn main() {
             record.id().to_string(),
         );
     }
+    let database = Arc::new(database);
     info!("Database created!");
 
     info!("Beginning classification");
     let mut read_iter = create_fasta_iterator_from_file(reads_file);
+    let mut read_query_count = 0_usize;
+    let pool = ThreadPool::new(15);
+    let (tx, rx) = mpsc::channel();
     while let Some(Ok(read)) = read_iter.next() {
-        let uppercase_read = convert_to_uppercase(read.seq());
-        match database.query_read(uppercase_read) {
-            None => {println!("{}\t0", read.id())}
-            Some(accession) => {println!("{}\t{}", read.id(), accession2taxid.get(&accession).unwrap())}
-        }
+        let tx = tx.clone();
+        let database = Arc::clone(&database);
+        pool.execute(move || tx.send((read.id().to_string(), database.query_read(convert_to_uppercase(read.seq())))).expect("failed to pass a message to receiver"));
     } // end read iterator
+    for (read_id, accession) in rx {
+        match accession {
+            None => {println!("{}\t0", read_id)}
+            Some(accession) => {println!("{}\t{}", read_id, accession2taxid.get(&accession).unwrap())}
+        }
+        read_query_count += 1;
+        if read_query_count % 100000 == 0 {
+            debug!("{} reads processed", read_query_count);
+        }
+    }
+
     info!("Done!")
 } // end main

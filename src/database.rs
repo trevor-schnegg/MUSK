@@ -1,8 +1,6 @@
 use crate::binomial::Binomial;
-use crate::kmer_vec::KmerVec;
 use rug::Float;
-use std::collections::{HashMap};
-use std::time::Instant;
+use std::collections::{HashMap, HashSet};
 
 fn base_to_binary(character: char) -> i8 {
     if character == 'A' {
@@ -40,7 +38,7 @@ pub struct Database {
     index2probability: Vec<Float>,
     kmer_len: usize,
     index2accession: Vec<String>,
-    point2occ: KmerVec,
+    point2occ: HashMap<u32, Vec<usize>>,
 }
 
 impl Database {
@@ -49,7 +47,7 @@ impl Database {
             index2probability: Vec::new(),
             kmer_len,
             index2accession: Vec::new(),
-            point2occ: KmerVec::new(),
+            point2occ: HashMap::new(),
         }
     }
 
@@ -80,31 +78,29 @@ impl Database {
             if kmer_1.contains(&-1) || kmer_2.contains(&-1) {
                 continue;
             }
-            let time_1 = Instant::now();
             let (kmer_1, kmer_2) = (convert_vec_i8_to_u32(kmer_1), convert_vec_i8_to_u32(kmer_2));
-            let elapsed_1 = time_1.elapsed();
-            println!("{:?} to convert", elapsed_1);
-            let time_2 = Instant::now();
             if self.insert_kmer(kmer_1, accession_index) {
                 insert_count += 1;
             }
             if self.insert_kmer(kmer_2, accession_index) {
                 insert_count += 1
             }
-            let elapsed_2 = time_2.elapsed();
-            println!("{:?} to insert", elapsed_2);
         }
         self.index2probability
             .push(self.calculate_probability(insert_count));
     }
 
     pub fn query_read(&self, read: String) -> Option<String> {
-        let mut num_queries = 0_u64;
-        let mut index_to_hit_counts = HashMap::new();
+        let mut kmer_set = HashSet::new();
         let read = read.chars().map(|x| base_to_binary(x)).collect::<Vec<i8>>();
         for kmer in read.windows(self.kmer_len) {
-            let kmer = convert_vec_i8_to_u32(kmer);
-            match self.point2occ.query(kmer) {
+            kmer_set.insert(convert_vec_i8_to_u32(kmer));
+        }
+        let num_queries = kmer_set.len() as u64;
+
+        let mut index_to_hit_counts = HashMap::new();
+        for kmer in kmer_set {
+            match self.point2occ.get(&kmer) {
                 None => continue,
                 Some(vec) => {
                     for index in vec {
@@ -117,7 +113,6 @@ impl Database {
                     }
                 }
             }
-            num_queries += 1;
         }
         self.calculate_result(index_to_hit_counts, num_queries)
     }
@@ -148,7 +143,10 @@ impl Database {
     }
 
     fn insert_kmer(&mut self, kmer: u32, accession_index: usize) -> bool {
-        self.point2occ.insert(kmer, accession_index)
+        match self.point2occ.get_mut(&kmer) {
+            None => {self.point2occ.insert(kmer, Vec::from(vec![accession_index])); true}
+            Some(vec) => {if vec.contains(&accession_index) {false} else { vec.push(accession_index); true}}
+        }
     }
 
     fn calculate_probability(&self, count: usize) -> Float {
