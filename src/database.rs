@@ -1,52 +1,165 @@
-use std::collections::{HashMap, HashSet};
+use crate::binomial::Binomial;
+use crate::kmer_vec::KmerVec;
 use rug::Float;
-use crate::intervals::Intervals;
+use std::collections::{HashMap};
+use std::time::Instant;
+
+fn base_to_binary(character: char) -> i8 {
+    if character == 'A' {
+        0
+    } else if character == 'C' {
+        1
+    } else if character == 'G' {
+        2
+    } else if character == 'T' {
+        3
+    } else {
+        -1
+    }
+}
+
+fn convert_vec_i8_to_u32(kmer: &[i8]) -> u32 {
+    let mut acc = 0_u32;
+    for (pow, n) in kmer.iter().rev().enumerate() {
+        if *n == 0_i8 {
+            continue
+        } else if *n == 1_i8 {
+            acc += 2_u32.pow(pow as u32)
+        } else if *n == 2_i8 {
+            acc += 2_u32.pow(pow as u32 + 1)
+        } else if *n == 3_i8 {
+            acc += 3 * 2_u32.pow(pow as u32)
+        } else {
+            panic!("impossible case")
+        }
+    }
+    acc
+}
 
 pub struct Database {
-    accession2probability: HashMap<String, Float>,
+    index2probability: Vec<Float>,
     kmer_len: usize,
-    intervals: Intervals
+    index2accession: Vec<String>,
+    point2occ: KmerVec,
 }
 
 impl Database {
-
     pub fn new(kmer_len: usize) -> Self {
         Database {
-            accession2probability: HashMap::new(),
+            index2probability: Vec::new(),
             kmer_len,
-            intervals: Intervals::new(),
+            index2accession: Vec::new(),
+            point2occ: KmerVec::new(),
         }
     }
 
-    pub fn push_interval(&mut self, interval: (usize, usize, String)) -> () {
-        self.intervals.push(interval)
-    }
+    pub fn insert_record(
+        &mut self,
+        forward_seq: String,
+        reverse_seq: String,
+        accession: String,
+    ) -> () {
+        let accession_index = self.index2accession.len();
+        self.index2accession.push(accession);
 
-    pub fn get_accession_of_index(&self, index: usize) -> String {
-        self.intervals.get_accession_of_index(index)
-    }
+        let forward_chars = forward_seq
+            .chars()
+            .map(|x| base_to_binary(x))
+            .collect::<Vec<i8>>();
+        let reverse_chars = reverse_seq
+            .chars()
+            .map(|x| base_to_binary(x))
+            .collect::<Vec<i8>>();
 
-    pub fn calculate_probability(&self, sequences: (&str, &str)) -> Float {
-        let mut set = HashSet::new();
-        for index in 0..(sequences.0.len() - self.kmer_len) {
-            let kmer_1 = &sequences.0[index..(index + self.kmer_len)];
-            if !kmer_1.contains("N") {
-                set.insert(kmer_1.as_bytes());
+        let mut insert_count = 0_usize;
+
+        for (kmer_1, kmer_2) in forward_chars
+            .windows(self.kmer_len)
+            .zip(reverse_chars.windows(self.kmer_len))
+        {
+            if kmer_1.contains(&-1) || kmer_2.contains(&-1) {
+                continue;
             }
-            let kmer_2 = &sequences.1[index..(index + self.kmer_len)];
-            if !kmer_2.contains("N") {
-                set.insert(kmer_2.as_bytes());
+            let time_1 = Instant::now();
+            let (kmer_1, kmer_2) = (convert_vec_i8_to_u32(kmer_1), convert_vec_i8_to_u32(kmer_2));
+            let elapsed_1 = time_1.elapsed();
+            println!("{:?} to convert", elapsed_1);
+            let time_2 = Instant::now();
+            if self.insert_kmer(kmer_1, accession_index) {
+                insert_count += 1;
+            }
+            if self.insert_kmer(kmer_2, accession_index) {
+                insert_count += 1
+            }
+            let elapsed_2 = time_2.elapsed();
+            println!("{:?} to insert", elapsed_2);
+        }
+        self.index2probability
+            .push(self.calculate_probability(insert_count));
+    }
+
+    pub fn query_read(&self, read: String) -> Option<String> {
+        let mut num_queries = 0_u64;
+        let mut index_to_hit_counts = HashMap::new();
+        let read = read.chars().map(|x| base_to_binary(x)).collect::<Vec<i8>>();
+        for kmer in read.windows(self.kmer_len) {
+            let kmer = convert_vec_i8_to_u32(kmer);
+            match self.point2occ.query(kmer) {
+                None => continue,
+                Some(vec) => {
+                    for index in vec {
+                        match index_to_hit_counts.get_mut(index) {
+                            None => {
+                                index_to_hit_counts.insert(*index, 1_u64);
+                            },
+                            Some(count) => *count += 1,
+                        }
+                    }
+                }
+            }
+            num_queries += 1;
+        }
+        self.calculate_result(index_to_hit_counts, num_queries)
+    }
+
+    fn calculate_result(
+        &self,
+        index_to_hit_counts: HashMap<usize, u64>,
+        num_queries: u64,
+    ) -> Option<String> {
+        let mut best_prob = Float::with_val(256, 1.0);
+        let mut best_prob_index = None;
+        for (accession_index, num_hits) in index_to_hit_counts {
+            let binomial = Binomial::new(
+                Float::with_val(256, self.get_probability_of_index(accession_index)),
+                num_queries,
+            )
+            .unwrap();
+            let prob = binomial.sf(num_hits).abs();
+            if prob < best_prob {
+                best_prob = prob;
+                best_prob_index = Some(accession_index);
             }
         }
-        Float::with_val(256, set.len()) / Float::with_val(256, 4_usize.pow(self.kmer_len as u32))
+        match best_prob_index {
+            None => None,
+            Some(index) => Some(self.get_accession_of_index(index)),
+        }
     }
 
-    pub fn set_probabilities(&mut self, accession2probabilities: HashMap<String, Float>) -> () {
-        self.accession2probability = accession2probabilities
+    fn insert_kmer(&mut self, kmer: u32, accession_index: usize) -> bool {
+        self.point2occ.insert(kmer, accession_index)
     }
 
-    pub fn get_probability(&self, accession: &str) -> Float {
-        self.accession2probability.get(accession).unwrap().clone()
+    fn calculate_probability(&self, count: usize) -> Float {
+        Float::with_val(256, count) / Float::with_val(256, 4_usize.pow(self.kmer_len as u32))
     }
 
+    fn get_probability_of_index(&self, accession_index: usize) -> Float {
+        self.index2probability.get(accession_index).unwrap().clone()
+    }
+
+    fn get_accession_of_index(&self, accession_index: usize) -> String {
+        self.index2accession.get(accession_index).unwrap().clone()
+    }
 }
