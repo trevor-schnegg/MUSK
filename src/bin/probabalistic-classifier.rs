@@ -6,10 +6,14 @@ use probabilitic_classifier::utility::{
     convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement,
 };
 use rug::Float;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::path::Path;
+use bio::alphabets;
+use bio::data_structures::bwt::{bwt, less, Occ};
+use bio::data_structures::fmindex::{FMIndex, FMIndexable};
+use bio::data_structures::fmindex::BackwardSearchResult::Complete;
+use bio::data_structures::suffix_array::suffix_array;
+use probabilitic_classifier::database::Database;
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -34,18 +38,6 @@ struct Args {
     kmer_len: usize,
 }
 
-fn insert_kmers(set_ref: &mut HashSet<u64>, seq: String, kmer_len: usize) {
-    for index in 0..(seq.len() - kmer_len) {
-        let kmer = &seq[index..(index + kmer_len)];
-        if kmer.contains("N") {
-            continue;
-        }
-        let mut hasher = DefaultHasher::new();
-        kmer.hash(&mut hasher);
-        set_ref.insert(hasher.finish());
-    }
-}
-
 fn main() {
     env_logger::init();
 
@@ -55,53 +47,71 @@ fn main() {
     let reference_file = Path::new(&args.reference_file);
     let reads_file = Path::new(&args.reads_file);
 
-    // Get accession2taxid and initialize the "database"
+    // Get accession2taxid
+    info!("Loading accession2taxid from taxonomy directory: {}", args.taxonomy_dir);
     let accession2taxid = get_accession_to_tax_id(taxonomy_dir, reference_file);
-    let mut database = HashMap::new();
+    info!("accession2taxid loaded!");
+    let mut database_stats = Database::new(args.kmer_len);
 
-    // Insert points into the database
-    for record in create_fasta_iterator_from_file(reference_file) {
-        let record = record.unwrap();
-        let accession_set = match database.get_mut(record.id()) {
-            None => {
-                database.insert(String::from(record.id()), HashSet::new());
-                database.get_mut(record.id()).unwrap()
-            }
-            Some(set) => set,
-        };
+    info!("Creating database string and probabilities");
+    // Create database string and get probabilities
+    let mut accession2probabilities = HashMap::new();
+    let mut database_string = String::new();
+    let mut record_iter = create_fasta_iterator_from_file(reference_file);
+    while let Some(Ok(record)) = record_iter.next() {
+        let database_string_start = database_string.len();
         let uppercase_record_seq = convert_to_uppercase(record.seq());
         let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
-        insert_kmers(accession_set, uppercase_record_seq, args.kmer_len);
-        insert_kmers(accession_set, reverse_complement_seq, args.kmer_len);
+        let prob = database_stats.calculate_probability((&*uppercase_record_seq, &*reverse_complement_seq));
+        accession2probabilities.insert(record.id().to_string(), prob);
+        database_string += &*(uppercase_record_seq + "$");
+        database_string += &*(reverse_complement_seq + "$");
+        database_stats.push_interval((database_string_start, database_string.len() -1, record.id().to_string()));
     }
+    info!("Database string and probabilities created!");
 
-    let mut probabilities = HashMap::new();
-    for (accession, kmer_set) in &database {
-        let probability = kmer_set.len() as f64 / 4_usize.pow(args.kmer_len as u32) as f64;
-        probabilities.insert(accession.clone(), probability);
-    }
+    // Set probabilities
+    database_stats.set_probabilities(accession2probabilities);
+
+    info!("Creating FM index");
+    // Create fm index
+    let alphabet = alphabets::dna::n_alphabet();
+    let sa = suffix_array(database_string.as_bytes());
+    let bwt = bwt(database_string.as_bytes(), &sa);
+    let less = less(&bwt, &alphabet);
+    let occ = Occ::new(&bwt, 3, &alphabet);
+    let fmindex = FMIndex::new(&bwt, &less, &occ);
+    info!("FM index created!");
 
     let needed_probability = Float::with_val(256, 1.0e-100);
     info!("Beginning classification");
     let mut read_iter = create_fasta_iterator_from_file(reads_file);
     while let Some(Ok(read)) = read_iter.next() {
         let mut read_kmers = HashSet::new();
-        let uppercase_record_seq = convert_to_uppercase(read.seq());
-        insert_kmers(&mut read_kmers, uppercase_record_seq, args.kmer_len);
+        let uppercase_read = convert_to_uppercase(read.seq());
+        for index in 0..(uppercase_read.len() - args.kmer_len) {
+            let kmer = &uppercase_read[index..(index + args.kmer_len)];
+            read_kmers.insert(kmer);
+        }
 
-        let num_queries = read_kmers.len();
+        // Query all distinct kmers in the FM Index
+        let num_queries = read_kmers.len() as u64;
         let mut hit_counts = HashMap::new();
         for kmer in read_kmers {
-            for (accession, kmer_set) in &database {
-                if kmer_set.contains(&kmer) {
-                    match hit_counts.get_mut(&*accession) {
-                        None => {
-                            hit_counts.insert(accession.clone(), 0);
-                            *hit_counts.get_mut(&*accession).unwrap() += 1
+            match fmindex.backward_search(kmer.as_bytes().iter()) {
+                Complete(interval) => {
+                    let mut accessions = HashSet::new();
+                    for accession in interval.occ(&sa).iter().map(|x| database_stats.get_accession_of_index(*x)) {
+                        accessions.insert(accession);
+                    }
+                    for accession in accessions {
+                        match hit_counts.get_mut(&accession) {
+                            None => {hit_counts.insert(accession, 1);},
+                            Some(count) => {*count += 1},
                         }
-                        Some(count) => *count += 1,
-                    };
+                    }
                 }
+                _ => continue,
             }
         }
 
@@ -109,7 +119,7 @@ fn main() {
         let mut best_prob_tax_id = 0_u32;
         for (accession, num_hits) in hit_counts {
             let binomial = Binomial::new(
-                Float::with_val(256, *probabilities.get(&*accession).unwrap()),
+                Float::with_val(256, database_stats.get_probability(&*accession)),
                 num_queries as u64,
             )
             .unwrap();
