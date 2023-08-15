@@ -1,6 +1,7 @@
 use crate::binomial::Binomial;
 use rug::Float;
 use std::collections::{HashMap, HashSet};
+use log::debug;
 
 fn base_to_binary(character: char) -> i8 {
     if character == 'A' {
@@ -17,21 +18,21 @@ fn base_to_binary(character: char) -> i8 {
 }
 
 fn convert_vec_i8_to_u32(kmer: &[i8]) -> u32 {
-    let mut acc = 0_u32;
-    for (pow, n) in kmer.iter().rev().enumerate() {
+    let mut acc = String::new();
+    for  n in kmer {
         if *n == 0_i8 {
-            continue
+            acc += "00"
         } else if *n == 1_i8 {
-            acc += 2_u32.pow(pow as u32)
+            acc += "01"
         } else if *n == 2_i8 {
-            acc += 2_u32.pow(pow as u32 + 1)
+            acc += "10"
         } else if *n == 3_i8 {
-            acc += 3 * 2_u32.pow(pow as u32)
+            acc += "11"
         } else {
             panic!("impossible case")
         }
     }
-    acc
+    u32::from_str_radix(&*acc, 2).expect("could not convert string to u32")
 }
 
 pub struct Database {
@@ -60,6 +61,7 @@ impl Database {
         let accession_index = self.index2accession.len();
         self.index2accession.push(accession);
 
+        let mut kmer_set = HashSet::new();
         let forward_chars = forward_seq
             .chars()
             .map(|x| base_to_binary(x))
@@ -69,8 +71,6 @@ impl Database {
             .map(|x| base_to_binary(x))
             .collect::<Vec<i8>>();
 
-        let mut insert_count = 0_usize;
-
         for (kmer_1, kmer_2) in forward_chars
             .windows(self.kmer_len)
             .zip(reverse_chars.windows(self.kmer_len))
@@ -79,13 +79,15 @@ impl Database {
                 continue;
             }
             let (kmer_1, kmer_2) = (convert_vec_i8_to_u32(kmer_1), convert_vec_i8_to_u32(kmer_2));
-            if self.insert_kmer(kmer_1, accession_index) {
-                insert_count += 1;
-            }
-            if self.insert_kmer(kmer_2, accession_index) {
-                insert_count += 1
-            }
+            kmer_set.insert(kmer_1);
+            kmer_set.insert(kmer_2);
         }
+
+        let insert_count = kmer_set.len();
+        for kmer in kmer_set {
+            self.insert_kmer(kmer, accession_index);
+        }
+
         self.index2probability
             .push(self.calculate_probability(insert_count));
     }
@@ -143,10 +145,10 @@ impl Database {
         }
     }
 
-    fn insert_kmer(&mut self, kmer: u32, accession_index: usize) -> bool {
+    fn insert_kmer(&mut self, kmer: u32, accession_index: usize) -> () {
         match self.point2occ.get_mut(&kmer) {
-            None => {self.point2occ.insert(kmer, Vec::from(vec![accession_index])); true}
-            Some(vec) => {if vec.contains(&accession_index) {false} else { vec.push(accession_index); true}}
+            None => {self.point2occ.insert(kmer, Vec::from(vec![accession_index]));}
+            Some(vec) => { vec.push(accession_index) }
         }
     }
 
