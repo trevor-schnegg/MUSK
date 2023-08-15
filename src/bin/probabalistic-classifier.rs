@@ -78,6 +78,7 @@ fn main() {
         let database = Arc::clone(&database);
         pool.execute(move || tx.send((read.id().to_string(), database.query_read(convert_to_uppercase(read.seq())))).expect("failed to pass a message to receiver"));
     } // end read iterator
+    drop(tx); // drop the original transmitter so that the stream closes when finished
     for (read_id, accession) in rx {
         match accession {
             None => {println!("{}\t0", read_id)}

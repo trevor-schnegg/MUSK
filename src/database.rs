@@ -122,6 +122,7 @@ impl Database {
         index_to_hit_counts: HashMap<usize, u64>,
         num_queries: u64,
     ) -> Option<String> {
+        let needed_probability = Float::with_val(256, 1.0e-100);
         let mut best_prob = Float::with_val(256, 1.0);
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
@@ -138,7 +139,7 @@ impl Database {
         }
         match best_prob_index {
             None => None,
-            Some(index) => Some(self.get_accession_of_index(index)),
+            Some(index) => if best_prob < needed_probability { Some(self.get_accession_of_index(index)) } else { None },
         }
     }
 
