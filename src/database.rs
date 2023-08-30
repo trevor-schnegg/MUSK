@@ -1,7 +1,7 @@
 use crate::binomial::Binomial;
 use rug::Float;
 use std::collections::{HashMap, HashSet};
-use log::debug;
+use serde::{Deserialize, Serialize};
 
 fn base_to_binary(character: char) -> i8 {
     if character == 'A' {
@@ -35,8 +35,9 @@ fn convert_vec_i8_to_u32(kmer: &[i8]) -> u32 {
     u32::from_str_radix(&*acc, 2).expect("could not convert string to u32")
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Database {
-    index2probability: Vec<Float>,
+    index2probability: Vec<f64>,
     kmer_len: usize,
     index2accession: Vec<String>,
     point2occ: HashMap<u32, Vec<usize>>,
@@ -152,11 +153,11 @@ impl Database {
         }
     }
 
-    fn calculate_probability(&self, count: usize) -> Float {
-        Float::with_val(256, count) / Float::with_val(256, 4_usize.pow(self.kmer_len as u32))
+    fn calculate_probability(&self, count: usize) -> f64 {
+        count as f64 / 4_usize.pow(self.kmer_len as u32) as f64
     }
 
-    fn get_probability_of_index(&self, accession_index: usize) -> Float {
+    fn get_probability_of_index(&self, accession_index: usize) -> f64 {
         self.index2probability.get(accession_index).unwrap().clone()
     }
 
