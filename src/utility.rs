@@ -12,8 +12,7 @@ pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
     let fasta_files = dir_content
         .filter_map(|x| {
             if let Ok(entry) = x {
-                if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna")
-                {
+                if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna") {
                     Some(entry.path().to_str().unwrap().to_string())
                 } else {
                     None

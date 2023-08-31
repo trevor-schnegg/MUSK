@@ -21,9 +21,7 @@ pub fn load_accession2taxid(accession2taxid_path: &Path) -> HashMap<String, u32>
 
 pub fn dump_data_to_file(data: Vec<u8>, file: &Path) -> io::Result<()> {
     let mut f = File::create(file).expect(&*format!("Could not create file {:?}", file));
-    let serialized =
-        bincode::serialize(&data).expect(&*format!("Could not serialize data for file {:?}", file));
-    f.write_all(&*serialized)
+    f.write_all(&*data)
 }
 
 pub fn load_database(file: &Path) -> Database {

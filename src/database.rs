@@ -18,35 +18,41 @@ fn base_to_binary(character: char) -> i8 {
 }
 
 fn convert_vec_i8_to_u32(kmer: &[i8]) -> u32 {
-    let mut acc = String::new();
-    for n in kmer {
+    let mut acc = 0;
+    for (kmer_position, n) in kmer.iter().rev().enumerate() {
         if *n == 0_i8 {
-            acc += "00"
+            // binary is 00, don't need to add anything
+            continue
         } else if *n == 1_i8 {
-            acc += "01"
+            // binary is 01
+            acc += 1_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
         } else if *n == 2_i8 {
-            acc += "10"
+            // binary is 10
+            acc += 2_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
         } else if *n == 3_i8 {
-            acc += "11"
+            // binary is 11
+            acc += 3_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
         } else {
             panic!("impossible case")
         }
     }
-    u32::from_str_radix(&*acc, 2).expect("could not convert string to u32")
+    acc
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
-    index2probability: Vec<f64>,
+    index2probability: HashMap<usize, f64>,
+    multi_accession2index: HashMap<String, usize>,
     kmer_len: usize,
     index2accession: Vec<String>,
-    point2occ: HashMap<u32, Vec<usize>>,
+    point2occ: HashMap<u32, usize>,
 }
 
 impl Database {
     pub fn new(kmer_len: usize) -> Self {
         Database {
-            index2probability: Vec::new(),
+            index2probability: HashMap::new(),
+            multi_accession2index: HashMap::new(),
             kmer_len,
             index2accession: Vec::new(),
             point2occ: HashMap::new(),
@@ -90,7 +96,7 @@ impl Database {
         }
 
         self.index2probability
-            .push(self.calculate_probability(insert_count));
+            .insert(accession_index, self.calculate_probability(insert_count));
     }
 
     pub fn query_read(&self, read: String) -> Option<String> {
@@ -105,13 +111,19 @@ impl Database {
         for kmer in kmer_set {
             match self.point2occ.get(&kmer) {
                 None => continue,
-                Some(vec) => {
-                    for index in vec {
-                        match index_to_hit_counts.get_mut(index) {
-                            None => {
-                                index_to_hit_counts.insert(*index, 1_u64);
+                Some(index) => {
+                    let accession = self.index2accession.get(*index).unwrap();
+                    if self.multi_accession2index.contains_key(accession) {
+                        for index in accession.split("&").map(|x| x.parse::<usize>().unwrap()) {
+                            match index_to_hit_counts.get_mut(&index) {
+                                None => {index_to_hit_counts.insert(index, 1);}
+                                Some(count) => {*count += 1}
                             }
-                            Some(count) => *count += 1,
+                        }
+                    } else {
+                        match index_to_hit_counts.get_mut(index) {
+                            None => {index_to_hit_counts.insert(*index, 1);}
+                            Some(count) => {*count += 1}
                         }
                     }
                 }
@@ -156,9 +168,29 @@ impl Database {
         match self.point2occ.get_mut(&kmer) {
             None => {
                 self.point2occ
-                    .insert(kmer, Vec::from(vec![accession_index]));
+                    .insert(kmer, accession_index);
             }
-            Some(vec) => vec.push(accession_index),
+            Some(index) => {
+                // since we only search a kmer once per sequence, a collision immediately means we
+                // might need a new accession (if this collision hasn't happened before)
+                let current_accession = self.index2accession.get(index.clone()).unwrap().clone();
+                let new_accession = if current_accession.contains("&") {
+                    current_accession + "&" + &*accession_index.to_string()
+                } else {
+                    index.to_string() + "&" + &*accession_index.to_string()
+                };
+                match self.multi_accession2index.get(&*new_accession) {
+                    None => {
+                        let new_accession_index = self.index2accession.len();
+                        self.index2accession.push(new_accession.clone());
+                        self.multi_accession2index.insert(new_accession, new_accession_index);
+                        *index = new_accession_index
+                    }
+                    Some(new_accession_index) => {
+                        *index = *new_accession_index;
+                    }
+                }
+            },
         }
     }
 
@@ -167,7 +199,7 @@ impl Database {
     }
 
     fn get_probability_of_index(&self, accession_index: usize) -> f64 {
-        self.index2probability.get(accession_index).unwrap().clone()
+        *self.index2probability.get(&accession_index).expect(&*format!("accession index {} does not have a probability", accession_index))
     }
 
     fn get_accession_of_index(&self, accession_index: usize) -> String {
