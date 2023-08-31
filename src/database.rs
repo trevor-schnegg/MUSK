@@ -1,7 +1,7 @@
 use crate::binomial::Binomial;
 use rug::Float;
-use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 fn base_to_binary(character: char) -> i8 {
     if character == 'A' {
@@ -19,7 +19,7 @@ fn base_to_binary(character: char) -> i8 {
 
 fn convert_vec_i8_to_u32(kmer: &[i8]) -> u32 {
     let mut acc = String::new();
-    for  n in kmer {
+    for n in kmer {
         if *n == 0_i8 {
             acc += "00"
         } else if *n == 1_i8 {
@@ -110,7 +110,7 @@ impl Database {
                         match index_to_hit_counts.get_mut(index) {
                             None => {
                                 index_to_hit_counts.insert(*index, 1_u64);
-                            },
+                            }
                             Some(count) => *count += 1,
                         }
                     }
@@ -142,14 +142,23 @@ impl Database {
         }
         match best_prob_index {
             None => None,
-            Some(index) => if best_prob < needed_probability { Some(self.get_accession_of_index(index)) } else { None },
+            Some(index) => {
+                if best_prob < needed_probability {
+                    Some(self.get_accession_of_index(index))
+                } else {
+                    None
+                }
+            }
         }
     }
 
     fn insert_kmer(&mut self, kmer: u32, accession_index: usize) -> () {
         match self.point2occ.get_mut(&kmer) {
-            None => {self.point2occ.insert(kmer, Vec::from(vec![accession_index]));}
-            Some(vec) => { vec.push(accession_index) }
+            None => {
+                self.point2occ
+                    .insert(kmer, Vec::from(vec![accession_index]));
+            }
+            Some(vec) => vec.push(accession_index),
         }
     }
 

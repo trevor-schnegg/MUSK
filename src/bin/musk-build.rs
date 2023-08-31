@@ -1,12 +1,12 @@
+use bincode::serialize;
 use clap::Parser;
-use log::{info};
+use log::{debug, info};
 use probabilitic_classifier::database::Database;
+use probabilitic_classifier::io::dump_data_to_file;
 use probabilitic_classifier::utility::{
-    convert_to_uppercase, create_fasta_iterator_from_file, reverse_complement,
+    convert_to_uppercase, create_fasta_iterator_from_file, get_fasta_files, reverse_complement,
 };
 use std::path::Path;
-use bincode::serialize;
-use probabilitic_classifier::io::{dump_data_to_file};
 
 /// Converts a fasta directory to a database
 #[derive(Parser)]
@@ -37,22 +37,30 @@ fn main() {
     // Create database variable
     let mut database = Database::new(16);
 
+    // Create database
     info!("Creating database");
-    // Create database string and get probabilities
-    let mut record_iter = create_fasta_iterator_from_file(reference_loc);
-    while let Some(Ok(record)) = record_iter.next() {
-        if record.seq().len() < 16 {
-            continue;
+    let mut fasta_files = get_fasta_files(reference_loc).into_iter();
+    while let Some(file) = fasta_files.next() {
+        debug!("reading file: {}", file);
+        let mut record_iter = create_fasta_iterator_from_file(Path::new(&file));
+        while let Some(Ok(record)) = record_iter.next() {
+            if record.seq().len() < 16 {
+                continue;
+            }
+            let uppercase_record_seq = convert_to_uppercase(record.seq());
+            let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
+            database.insert_record(
+                uppercase_record_seq,
+                reverse_complement_seq,
+                record.id().to_string(),
+            );
         }
-        let uppercase_record_seq = convert_to_uppercase(record.seq());
-        let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
-        database.insert_record(
-            uppercase_record_seq,
-            reverse_complement_seq,
-            record.id().to_string(),
-        );
     }
-    dump_data_to_file(serialize(&database).expect("could not serialize database"), index_out).expect("could not write database to file");
+    dump_data_to_file(
+        serialize(&database).expect("could not serialize database"),
+        index_out,
+    )
+    .expect("could not write database to file");
 
     info!("Database created!");
 } // end main

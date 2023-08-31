@@ -1,10 +1,8 @@
 use clap::Parser;
 use log::{debug, info};
-use probabilitic_classifier::utility::{
-    convert_to_uppercase, create_fasta_iterator_from_file,
-};
-use std::path::Path;
 use probabilitic_classifier::io::{load_accession2taxid, load_database};
+use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file};
+use std::path::Path;
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -22,7 +20,6 @@ struct Args {
     #[arg()]
     /// The file containing fasta reads to classify
     reads_file: String,
-
 }
 
 fn main() {
@@ -34,10 +31,7 @@ fn main() {
     let reads_file = Path::new(&args.reads_file);
 
     // Get accession2taxid
-    info!(
-        "Loading accession2taxid from: {}",
-        args.accession2taxid
-    );
+    info!("Loading accession2taxid from: {}", args.accession2taxid);
     let accession2taxid = load_accession2taxid(accession2taxid);
     info!("accession2taxid loaded!");
 
@@ -51,8 +45,16 @@ fn main() {
     while let Some(Ok(read)) = read_iter.next() {
         let accession = database.query_read(convert_to_uppercase(read.seq()));
         match accession {
-            None => {println!("{}\t0", read.id())}
-            Some(accession) => {println!("{}\t{}", read.id(), accession2taxid.get(&accession).unwrap())}
+            None => {
+                println!("{}\t0", read.id())
+            }
+            Some(accession) => {
+                println!(
+                    "{}\t{}",
+                    read.id(),
+                    accession2taxid.get(&accession).unwrap()
+                )
+            }
         }
         read_query_count += 1;
         if read_query_count % 100000 == 0 {
