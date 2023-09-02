@@ -1,9 +1,29 @@
 use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
+use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+
+pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
+    let dir_content =
+        fs::read_dir(reference_loc).expect("could not read provided reference directory");
+    let fasta_files = dir_content
+        .filter_map(|x| {
+            if let Ok(entry) = x {
+                if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna") {
+                    Some(entry.path().to_str().unwrap().to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<String>>();
+    fasta_files
+}
 
 pub fn convert_to_uppercase(sequence: TextSlice) -> String {
     match std::str::from_utf8(sequence) {
