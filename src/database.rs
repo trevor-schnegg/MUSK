@@ -112,29 +112,36 @@ impl Database {
             match self.point2occ.get(&kmer) {
                 None => continue,
                 Some(index) => {
-                    let accession = self.index2accession.get(*index).unwrap();
-                    if self.multi_accession2index.contains_key(accession) {
-                        for index in accession.split("&").map(|x| x.parse::<usize>().unwrap()) {
-                            match index_to_hit_counts.get_mut(&index) {
-                                None => {index_to_hit_counts.insert(index, 1);}
-                                Some(count) => {*count += 1}
-                            }
-                        }
-                    } else {
-                        match index_to_hit_counts.get_mut(index) {
-                            None => {index_to_hit_counts.insert(*index, 1);}
-                            Some(count) => {*count += 1}
-                        }
+                    match index_to_hit_counts.get_mut(index) {
+                        None => {index_to_hit_counts.insert(*index, 1_usize);}
+                        Some(count) => {*count += 1}
                     }
                 }
             }
         }
-        self.calculate_result(index_to_hit_counts, num_queries)
+        let mut accession2hit_counts = HashMap::new();
+        for (index, index_count) in index_to_hit_counts {
+            let accession = self.index2accession.get(index).unwrap();
+            if self.multi_accession2index.contains_key(accession) {
+                for index in accession.split("&").map(|x| x.parse::<usize>().unwrap()) {
+                    match accession2hit_counts.get_mut(&index) {
+                        None => {accession2hit_counts.insert(index, index_count);}
+                        Some(count) => {*count += index_count}
+                    }
+                }
+            } else {
+                match accession2hit_counts.get_mut(&index) {
+                    None => {accession2hit_counts.insert(index, 1_usize);}
+                    Some(count) => {*count += 1}
+                }
+            }
+        }
+        self.calculate_result(accession2hit_counts, num_queries)
     }
 
     fn calculate_result(
         &self,
-        index_to_hit_counts: HashMap<usize, u64>,
+        index_to_hit_counts: HashMap<usize, usize>,
         num_queries: u64,
     ) -> Option<String> {
         let needed_probability = Float::with_val(256, 1.0e-100);
@@ -146,7 +153,7 @@ impl Database {
                 num_queries,
             )
             .unwrap();
-            let prob = binomial.sf(num_hits).abs();
+            let prob = binomial.sf(num_hits as u64).abs();
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);
