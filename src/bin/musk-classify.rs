@@ -1,7 +1,7 @@
 use clap::Parser;
 use log::{debug, info};
-use probabilitic_classifier::io::{load_accession2taxid, load_database};
-use probabilitic_classifier::utility::{convert_to_uppercase, create_fasta_iterator_from_file};
+use musk::io::{load_accession2taxid, load_database};
+use musk::utility::{convert_to_uppercase, create_fasta_iterator_from_file};
 use std::path::Path;
 
 /// Converts a fasta file to a database

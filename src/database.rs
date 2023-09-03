@@ -131,8 +131,8 @@ impl Database {
                 }
             } else {
                 match accession2hit_counts.get_mut(&index) {
-                    None => {accession2hit_counts.insert(index, 1_usize);}
-                    Some(count) => {*count += 1}
+                    None => {accession2hit_counts.insert(index, index_count);}
+                    Some(count) => {*count += index_count}
                 }
             }
         }

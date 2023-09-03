@@ -1,9 +1,9 @@
 use bincode::serialize;
 use clap::Parser;
 use log::{debug, info};
-use probabilitic_classifier::database::Database;
-use probabilitic_classifier::io::dump_data_to_file;
-use probabilitic_classifier::utility::{
+use musk::database::Database;
+use musk::io::dump_data_to_file;
+use musk::utility::{
     convert_to_uppercase, create_fasta_iterator_from_file, get_fasta_files, reverse_complement,
 };
 use std::path::Path;
