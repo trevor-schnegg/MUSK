@@ -2,41 +2,28 @@ use crate::binomial::Binomial;
 use rug::Float;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use num_traits::Pow;
 
-fn base_to_binary(character: char) -> i8 {
-    if character == 'A' {
-        0
-    } else if character == 'C' {
-        1
-    } else if character == 'G' {
-        2
-    } else if character == 'T' {
-        3
-    } else {
-        -1
-    }
-}
-
-fn convert_vec_i8_to_u32(kmer: &[i8]) -> u32 {
+fn convert_vec_i8_to_u32(kmer: &[u8]) -> Option<u32> {
     let mut acc = 0;
     for (kmer_position, n) in kmer.iter().rev().enumerate() {
-        if *n == 0_i8 {
+        if *n == b'A' {
             // binary is 00, don't need to add anything
             continue
-        } else if *n == 1_i8 {
+        } else if *n == b'C' {
             // binary is 01
             acc += 1_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
-        } else if *n == 2_i8 {
+        } else if *n == b'G' {
             // binary is 10
             acc += 2_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
-        } else if *n == 3_i8 {
+        } else if *n == b'T' {
             // binary is 11
             acc += 3_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
         } else {
-            panic!("impossible case")
+            return None
         }
     }
-    acc
+    Some(acc)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,7 +32,7 @@ pub struct Database {
     multi_accession2index: HashMap<String, usize>,
     kmer_len: usize,
     index2accession: Vec<String>,
-    point2occ: HashMap<u32, usize>,
+    point2occ: Vec<Option<u32>>,
 }
 
 impl Database {
@@ -55,7 +42,7 @@ impl Database {
             multi_accession2index: HashMap::new(),
             kmer_len,
             index2accession: Vec::new(),
-            point2occ: HashMap::new(),
+            point2occ: vec![None; 4.pow(kmer_len as u32) as usize],
         }
     }
 
@@ -69,25 +56,25 @@ impl Database {
         self.index2accession.push(accession);
 
         let mut kmer_set = HashSet::new();
-        let forward_chars = forward_seq
-            .chars()
-            .map(|x| base_to_binary(x))
-            .collect::<Vec<i8>>();
-        let reverse_chars = reverse_seq
-            .chars()
-            .map(|x| base_to_binary(x))
-            .collect::<Vec<i8>>();
+        let forward_bytes = forward_seq
+            .as_bytes();
+        let reverse_bytes = reverse_seq
+            .as_bytes();
 
-        for (kmer_1, kmer_2) in forward_chars
+        for (kmer_1, kmer_2) in forward_bytes
             .windows(self.kmer_len)
-            .zip(reverse_chars.windows(self.kmer_len))
+            .zip(reverse_bytes.windows(self.kmer_len))
         {
-            if kmer_1.contains(&-1) || kmer_2.contains(&-1) {
-                continue;
-            }
             let (kmer_1, kmer_2) = (convert_vec_i8_to_u32(kmer_1), convert_vec_i8_to_u32(kmer_2));
-            kmer_set.insert(kmer_1);
-            kmer_set.insert(kmer_2);
+            match (kmer_1, kmer_2) {
+                (Some(int_1), Some(int_2)) => {
+                    kmer_set.insert(int_1);
+                    kmer_set.insert(int_2);
+                },
+                (Some(int), None) => { kmer_set.insert(int); },
+                (None, Some(int)) => { kmer_set.insert(int); },
+                (None, None) => {continue}
+            }
         }
 
         let insert_count = kmer_set.len();
@@ -101,15 +88,18 @@ impl Database {
 
     pub fn query_read(&self, read: String) -> Option<String> {
         let mut kmer_set = HashSet::new();
-        let read = read.chars().map(|x| base_to_binary(x)).collect::<Vec<i8>>();
+        let read = read.as_bytes();
         for kmer in read.windows(self.kmer_len) {
-            kmer_set.insert(convert_vec_i8_to_u32(kmer));
+            match convert_vec_i8_to_u32(kmer) {
+                None => {continue}
+                Some(int) => {kmer_set.insert(int);}
+            }
         }
         let num_queries = kmer_set.len() as u64;
 
         let mut index_to_hit_counts = HashMap::new();
         for kmer in kmer_set {
-            match self.point2occ.get(&kmer) {
+            match self.point2occ.get(kmer as usize).unwrap() {
                 None => continue,
                 Some(index) => {
                     match index_to_hit_counts.get_mut(index) {
@@ -121,9 +111,9 @@ impl Database {
         }
         let mut accession2hit_counts = HashMap::new();
         for (index, index_count) in index_to_hit_counts {
-            let accession = self.index2accession.get(index).unwrap();
+            let accession = self.index2accession.get(index as usize).unwrap();
             if self.multi_accession2index.contains_key(accession) {
-                for index in accession.split("&").map(|x| x.parse::<usize>().unwrap()) {
+                for index in accession.split("&").map(|x| x.parse::<u32>().unwrap()) {
                     match accession2hit_counts.get_mut(&index) {
                         None => {accession2hit_counts.insert(index, index_count);}
                         Some(count) => {*count += index_count}
@@ -141,7 +131,7 @@ impl Database {
 
     fn calculate_result(
         &self,
-        index_to_hit_counts: HashMap<usize, usize>,
+        index_to_hit_counts: HashMap<u32, usize>,
         num_queries: u64,
     ) -> Option<String> {
         let needed_probability = Float::with_val(256, 1.0e-100);
@@ -149,7 +139,7 @@ impl Database {
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
             let binomial = Binomial::new(
-                Float::with_val(256, self.get_probability_of_index(accession_index)),
+                Float::with_val(256, self.get_probability_of_index(accession_index as usize)),
                 num_queries,
             )
             .unwrap();
@@ -163,7 +153,7 @@ impl Database {
             None => None,
             Some(index) => {
                 if best_prob < needed_probability {
-                    Some(self.get_accession_of_index(index))
+                    Some(self.get_accession_of_index(index as usize))
                 } else {
                     None
                 }
@@ -172,15 +162,15 @@ impl Database {
     }
 
     fn insert_kmer(&mut self, kmer: u32, accession_index: usize) -> () {
-        match self.point2occ.get_mut(&kmer) {
+        let current_index = self.point2occ.get_mut(kmer as usize).unwrap();
+        match current_index {
             None => {
-                self.point2occ
-                    .insert(kmer, accession_index);
+                *current_index = Some(accession_index as u32);
             }
             Some(index) => {
                 // since we only search a kmer once per sequence, a collision immediately means we
                 // might need a new accession (if this collision hasn't happened before)
-                let current_accession = self.index2accession.get(index.clone()).unwrap().clone();
+                let current_accession = self.index2accession.get(*index as usize).unwrap().clone();
                 let new_accession = if current_accession.contains("&") {
                     current_accession + "&" + &*accession_index.to_string()
                 } else {
@@ -191,10 +181,10 @@ impl Database {
                         let new_accession_index = self.index2accession.len();
                         self.index2accession.push(new_accession.clone());
                         self.multi_accession2index.insert(new_accession, new_accession_index);
-                        *index = new_accession_index
+                        *index = new_accession_index as u32;
                     }
                     Some(new_accession_index) => {
-                        *index = *new_accession_index;
+                        *index = *new_accession_index as u32;
                     }
                 }
             },
