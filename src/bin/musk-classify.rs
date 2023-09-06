@@ -52,7 +52,7 @@ fn main() {
                 println!(
                     "{}\t{}",
                     read.id(),
-                    accession2taxid.get(&accession).unwrap()
+                    accession2taxid.get(accession).unwrap()
                 )
             }
         }
