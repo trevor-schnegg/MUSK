@@ -35,7 +35,7 @@ fn main() {
     let reference_loc = Path::new(&args.reference_loc);
 
     // Create database variable
-    let mut database = Database::new(15);
+    let mut database = Database::new(16);
 
     // Create database
     info!("Creating database");
@@ -44,7 +44,7 @@ fn main() {
         debug!("reading file: {}", file);
         let mut record_iter = create_fasta_iterator_from_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
-            if record.seq().len() < 15 {
+            if record.seq().len() < 16 {
                 continue;
             }
             let uppercase_record_seq = convert_to_uppercase(record.seq());
