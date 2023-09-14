@@ -1,23 +1,20 @@
 use crate::accession_tree::AccessionTreeNode::{Accession, Branch};
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Serialize, Deserialize)]
 pub enum AccessionTreeNode {
     Accession(String),
-    Branch(i32, i32)
+    Branch(i32, i32),
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct AccessionTree {
-    nodes: Vec<AccessionTreeNode>
+    nodes: Vec<AccessionTreeNode>,
 }
 
 impl AccessionTree {
     pub fn new() -> Self {
-        AccessionTree {
-            nodes: Vec::new()
-        }
+        AccessionTree { nodes: Vec::new() }
     }
 
     /// Pushes the new node to the tree, returns the index of the new node

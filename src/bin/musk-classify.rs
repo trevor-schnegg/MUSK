@@ -49,11 +49,7 @@ fn main() {
                 println!("{}\t0", read.id())
             }
             Some(accession) => {
-                println!(
-                    "{}\t{}",
-                    read.id(),
-                    accession2taxid.get(accession).unwrap()
-                )
+                println!("{}\t{}", read.id(), accession2taxid.get(accession).unwrap())
             }
         }
         read_query_count += 1;
