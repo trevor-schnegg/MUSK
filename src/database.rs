@@ -57,12 +57,12 @@ impl Database {
         let forward_bytes = forward_seq.as_bytes();
         let reverse_bytes = reverse_seq.as_bytes();
 
-        for (kmer_1, kmer_2) in forward_bytes
+        for (kmer_1_int, kmer_2_int) in forward_bytes
             .windows(self.kmer_len)
             .zip(reverse_bytes.windows(self.kmer_len))
+            .map(|(kmer_1_bytes, kmer_2_bytes)| (convert_vec_i8_to_u32(kmer_1_bytes), convert_vec_i8_to_u32(kmer_2_bytes)))
         {
-            let (kmer_1, kmer_2) = (convert_vec_i8_to_u32(kmer_1), convert_vec_i8_to_u32(kmer_2));
-            match (kmer_1, kmer_2) {
+            match (kmer_1_int, kmer_2_int) {
                 (Some(int_1), Some(int_2)) => {
                     kmer_set.insert(int_1);
                     kmer_set.insert(int_2);
