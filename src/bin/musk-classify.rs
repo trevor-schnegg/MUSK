@@ -1,7 +1,7 @@
 use clap::Parser;
 use log::{debug, info};
 use musk::io::{load_accession2taxid, load_database};
-use musk::utility::{convert_to_uppercase, create_fasta_iterator_from_file};
+use musk::utility::{convert_to_uppercase, get_fasta_iterator_of_file};
 use std::path::Path;
 
 /// Converts a fasta file to a database
@@ -40,7 +40,7 @@ fn main() {
     info!("Database loaded!");
 
     info!("Beginning classification");
-    let mut read_iter = create_fasta_iterator_from_file(reads_file);
+    let mut read_iter = get_fasta_iterator_of_file(reads_file);
     let mut read_query_count = 0_usize;
     while let Some(Ok(read)) = read_iter.next() {
         let accession = database.query_read(convert_to_uppercase(read.seq()));

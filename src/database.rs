@@ -1,31 +1,9 @@
 use crate::accession_tree::AccessionTree;
 use crate::accession_tree::AccessionTreeNode::{Accession, Branch};
-use crate::binomial::Binomial;
-use rug::Float;
+use crate::utility::Sequence::{Double, Single};
+use crate::utility::{get_kmers_as_u32, sf};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-
-fn convert_vec_i8_to_u32(kmer: &[u8]) -> Option<u32> {
-    let mut acc = 0;
-    for (kmer_position, n) in kmer.iter().rev().enumerate() {
-        if *n == b'A' {
-            // binary is 00, don't need to add anything
-            continue;
-        } else if *n == b'C' {
-            // binary is 01
-            acc += 1_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
-        } else if *n == b'G' {
-            // binary is 10
-            acc += 2_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
-        } else if *n == b'T' {
-            // binary is 11
-            acc += 3_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
-        } else {
-            return None;
-        }
-    }
-    Some(acc)
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
@@ -52,32 +30,9 @@ impl Database {
         accession: String,
     ) -> () {
         let accession_index = self.accessions.push_new_node(Accession(accession));
-
-        let mut kmer_set = HashSet::new();
-        let forward_bytes = forward_seq.as_bytes();
-        let reverse_bytes = reverse_seq.as_bytes();
-
-        for (kmer_1, kmer_2) in forward_bytes
-            .windows(self.kmer_len)
-            .zip(reverse_bytes.windows(self.kmer_len))
-        {
-            let (kmer_1, kmer_2) = (convert_vec_i8_to_u32(kmer_1), convert_vec_i8_to_u32(kmer_2));
-            match (kmer_1, kmer_2) {
-                (Some(int_1), Some(int_2)) => {
-                    kmer_set.insert(int_1);
-                    kmer_set.insert(int_2);
-                }
-                (Some(int), None) => {
-                    kmer_set.insert(int);
-                }
-                (None, Some(int)) => {
-                    kmer_set.insert(int);
-                }
-                (None, None) => continue,
-            }
-        }
-
+        let kmer_set = get_kmers_as_u32(Double(forward_seq, reverse_seq), self.kmer_len);
         let insert_count = kmer_set.len();
+
         self.insert_kmers(kmer_set, accession_index);
 
         self.index2probability
@@ -85,16 +40,7 @@ impl Database {
     }
 
     pub fn query_read(&self, read: String) -> Option<&str> {
-        let mut kmer_set = HashSet::new();
-        let read = read.as_bytes();
-        for kmer in read.windows(self.kmer_len) {
-            match convert_vec_i8_to_u32(kmer) {
-                None => continue,
-                Some(int) => {
-                    kmer_set.insert(int);
-                }
-            }
-        }
+        let kmer_set = get_kmers_as_u32(Single(read), self.kmer_len);
         let num_queries = kmer_set.len() as u64;
 
         let mut index_to_hit_counts = HashMap::new();
@@ -129,20 +75,15 @@ impl Database {
         index_to_hit_counts: HashMap<i32, usize>,
         num_queries: u64,
     ) -> Option<&str> {
-        let needed_probability = Float::with_val(256, 1.0e-100);
-        let mut best_prob = Float::with_val(256, 1.0);
+        let needed_probability = 1.0e-100;
+        let mut best_prob = 1.0;
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
             let accession_probability = self.get_probability_of_index(accession_index);
             if (num_hits as f64) < accession_probability * num_queries as f64 {
                 continue;
             }
-            let binomial = Binomial::new(
-                Float::with_val(256, self.get_probability_of_index(accession_index)),
-                num_queries,
-            )
-            .unwrap();
-            let prob = binomial.sf(num_hits as u64).abs();
+            let prob = sf(num_queries as u64, accession_probability, num_hits as u64);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);

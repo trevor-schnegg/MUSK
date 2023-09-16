@@ -15,4 +15,4 @@ bincode = "*"
 serde = {version = "*", features = ["derive"]}
 rug = "*"
 num-traits = "*"
-bitvec = "*"
+rand = "*"

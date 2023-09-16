@@ -4,7 +4,7 @@ use log::{debug, info};
 use musk::database::Database;
 use musk::io::dump_data_to_file;
 use musk::utility::{
-    convert_to_uppercase, create_fasta_iterator_from_file, get_fasta_files, reverse_complement,
+    convert_to_uppercase, get_fasta_files, get_fasta_iterator_of_file, reverse_complement,
 };
 use std::path::Path;
 
@@ -42,7 +42,7 @@ fn main() {
     let mut fasta_files = get_fasta_files(reference_loc).into_iter();
     while let Some(file) = fasta_files.next() {
         debug!("reading file: {}", file);
-        let mut record_iter = create_fasta_iterator_from_file(Path::new(&file));
+        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < 15 {
                 continue;
