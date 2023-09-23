@@ -1,5 +1,5 @@
 use rand::distributions::Uniform;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 
 fn u8_to_base(n: u8) -> char {
     if n == 0 {

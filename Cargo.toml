@@ -13,6 +13,6 @@ statrs = "*"
 clap = { version = "*", features = ["derive"] }
 bincode = "*"
 serde = {version = "*", features = ["derive"]}
-rug = "*"
 num-traits = "*"
 rand = "*"
+rv = "*"

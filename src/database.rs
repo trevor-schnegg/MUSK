@@ -1,13 +1,15 @@
 use crate::accession_tree::AccessionTree;
 use crate::accession_tree::AccessionTreeNode::{Accession, Branch};
 use crate::utility::Sequence::{Double, Single};
-use crate::utility::{get_kmers_as_u32, sf};
+use crate::utility::{get_kmers_as_u32};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use statrs::distribution::{DiscreteCDF, Hypergeometric};
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
-    index2probability: HashMap<i32, f64>,
+    index2probability: HashMap<i32, usize>,
     kmer_len: usize,
     accessions: AccessionTree,
     point2occ: Vec<i32>,
@@ -30,13 +32,13 @@ impl Database {
         accession: String,
     ) -> () {
         let accession_index = self.accessions.push_new_node(Accession(accession));
-        let kmer_set = get_kmers_as_u32(Double(forward_seq, reverse_seq), self.kmer_len);
-        let insert_count = kmer_set.len();
+        let record_kmer_set = get_kmers_as_u32(Double(forward_seq, reverse_seq), self.kmer_len);
+        let insert_count = record_kmer_set.len();
 
-        self.insert_kmers(kmer_set, accession_index);
+        self.insert_kmers(record_kmer_set, accession_index);
 
         self.index2probability
-            .insert(accession_index, self.calculate_probability(insert_count));
+            .insert(accession_index, insert_count);
     }
 
     pub fn query_read(&self, read: String) -> Option<&str> {
@@ -49,7 +51,7 @@ impl Database {
                 -1 => continue,
                 index => match index_to_hit_counts.get_mut(index) {
                     None => {
-                        index_to_hit_counts.insert(*index, 1_usize);
+                        index_to_hit_counts.insert(*index, 1_u64);
                     }
                     Some(count) => *count += 1,
                 },
@@ -72,18 +74,16 @@ impl Database {
 
     fn calculate_result(
         &self,
-        index_to_hit_counts: HashMap<i32, usize>,
+        index_to_hit_counts: HashMap<i32, u64>,
         num_queries: u64,
     ) -> Option<&str> {
         let needed_probability = 1.0e-100;
         let mut best_prob = 1.0;
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
-            let accession_probability = self.get_probability_of_index(accession_index);
-            if (num_hits as f64) < accession_probability * num_queries as f64 {
-                continue;
-            }
-            let prob = sf(num_queries as u64, accession_probability, num_hits as u64);
+            let total_successes = self.get_probability_of_index(accession_index);
+            let prob = Hypergeometric::new(4_u64.pow(self.kmer_len as u32), total_successes as u64, num_queries).unwrap().sf(num_hits);
+            debug!("{:1.2e}", prob);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);
@@ -124,12 +124,26 @@ impl Database {
         }
     }
 
-    fn calculate_probability(&self, count: usize) -> f64 {
-        let prob = count as f64 / 4_usize.pow(self.kmer_len as u32) as f64;
-        prob
-    }
+    // fn create_kmer_set(&self, size: usize) -> HashSet<u32> {
+    //     let random_read = create_random_read(size + self.kmer_len - 1);
+    //     let mut last_kmer = random_read.get(random_read.len()-1-self.kmer_len..random_read.len()-1).unwrap().to_string();
+    //     let mut kmers = get_kmers_as_u32(Single(random_read), self.kmer_len);
+    //     while kmers.len() < size {
+    //         let new_kmer = create_random_read(self.kmer_len);
+    //         last_kmer += &*new_kmer;
+    //         let new_kmers = get_kmers_as_u32(Single(last_kmer.clone()), self.kmer_len);
+    //         for kmer in new_kmers {
+    //             kmers.insert(kmer);
+    //             if kmers.len() >= size {
+    //                 break
+    //             }
+    //         }
+    //         last_kmer = new_kmer;
+    //     }
+    //     kmers
+    // }
 
-    fn get_probability_of_index(&self, accession_index: i32) -> f64 {
+    fn get_probability_of_index(&self, accession_index: i32) -> usize {
         *self
             .index2probability
             .get(&accession_index)
