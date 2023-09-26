@@ -82,7 +82,7 @@ pub fn sf(n: u64, p: f64, x: u64) -> f64 {
     }
 }
 
-pub fn convert_vec_u8_to_u32(kmer: &[u8]) -> Option<u32> {
+pub fn vec_dna_bytes_to_u32(kmer: &[u8]) -> Option<u32> {
     let mut acc = 0;
     for (kmer_position, n) in kmer.iter().rev().enumerate() {
         if *n == b'A' {
@@ -111,7 +111,7 @@ pub fn get_kmers_as_u32(sequence: Sequence, kmer_len: usize) -> HashSet<u32> {
             for kmer in sequence
                 .as_bytes()
                 .windows(kmer_len)
-                .map(|kmer_bytes| convert_vec_u8_to_u32(kmer_bytes))
+                .map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes))
             {
                 match kmer {
                     None => continue,
@@ -128,8 +128,8 @@ pub fn get_kmers_as_u32(sequence: Sequence, kmer_len: usize) -> HashSet<u32> {
                 .zip(reverse.as_bytes().windows(kmer_len))
                 .map(|(kmer_1_bytes, kmer_2_bytes)| {
                     (
-                        convert_vec_u8_to_u32(kmer_1_bytes),
-                        convert_vec_u8_to_u32(kmer_2_bytes),
+                        vec_dna_bytes_to_u32(kmer_1_bytes),
+                        vec_dna_bytes_to_u32(kmer_2_bytes),
                     )
                 })
             {

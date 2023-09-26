@@ -1,11 +1,11 @@
 use crate::accession_tree::AccessionTree;
 use crate::accession_tree::AccessionTreeNode::{Accession, Branch};
-use crate::utility::Sequence::{Double, Single};
-use crate::utility::{get_kmers_as_u32};
+use crate::utility::Sequence::Double;
+use crate::utility::{get_kmers_as_u32, vec_dna_bytes_to_u32};
 use log::debug;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use statrs::distribution::{DiscreteCDF, Hypergeometric};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
@@ -37,16 +37,28 @@ impl Database {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.index2probability
-            .insert(accession_index, insert_count);
+        self.index2probability.insert(accession_index, insert_count);
     }
 
-    pub fn query_read(&self, read: String) -> Option<&str> {
-        let kmer_set = get_kmers_as_u32(Single(read), self.kmer_len);
-        let num_queries = kmer_set.len() as u64;
-
+    pub fn query_read(
+        &self,
+        read: String,
+        num_queries: usize,
+        required_probability_exponent: i32,
+    ) -> Option<&str> {
+        let mut already_queried = HashSet::new();
         let mut index_to_hit_counts = HashMap::new();
-        for kmer in kmer_set {
+        let mut kmer_iter = read
+            .as_bytes()
+            .windows(self.kmer_len)
+            .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes));
+        while let Some(kmer) = kmer_iter.next() {
+            if already_queried.len() >= num_queries {
+                break;
+            } else if already_queried.contains(&kmer) {
+                continue;
+            }
+            already_queried.insert(kmer);
             match self.point2occ.get(kmer as usize).unwrap() {
                 -1 => continue,
                 index => match index_to_hit_counts.get_mut(index) {
@@ -69,21 +81,32 @@ impl Database {
                 }
             }
         }
-        self.calculate_result(accession2hit_counts, num_queries)
+        self.calculate_result(
+            accession2hit_counts,
+            already_queried.len() as u64,
+            required_probability_exponent,
+        )
     }
 
     fn calculate_result(
         &self,
         index_to_hit_counts: HashMap<i32, u64>,
         num_queries: u64,
+        required_probability_exponent: i32,
     ) -> Option<&str> {
-        let needed_probability = 1.0e-100;
+        let needed_probability = 10.0_f64.powi(required_probability_exponent);
         let mut best_prob = 1.0;
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
             let total_successes = self.get_probability_of_index(accession_index);
-            let prob = Hypergeometric::new(4_u64.pow(self.kmer_len as u32), total_successes as u64, num_queries).unwrap().sf(num_hits);
-            debug!("{:1.2e}", prob);
+            let prob = Hypergeometric::new(
+                4_u64.pow(self.kmer_len as u32),
+                total_successes as u64,
+                num_queries,
+            )
+            .unwrap()
+            .sf(num_hits);
+            // debug!("{:1.2e}", prob);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);
