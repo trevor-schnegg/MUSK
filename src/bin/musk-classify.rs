@@ -12,7 +12,7 @@ use std::path::Path;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = 100)]
+    #[arg(short, long, default_value_t = 400)]
     /// Number of queries to perform for each read
     num_queries: usize,
 
@@ -62,8 +62,11 @@ fn main() {
     let mut read_iter = get_fasta_iterator_of_file(reads_file);
     let mut read_query_count = 0_usize;
     while let Some(Ok(read)) = read_iter.next() {
-        let accession =
-            database.query_read(convert_to_uppercase(read.seq()), args.num_queries, true_exponent);
+        let accession = database.query_read(
+            convert_to_uppercase(read.seq()),
+            args.num_queries,
+            true_exponent,
+        );
         match accession {
             None => {
                 let string = format!("{}\t0\n", read.id());
@@ -72,6 +75,7 @@ fn main() {
                     .expect("failed to write to output file");
             }
             Some(accession) => {
+                println!("{}", read.id());
                 let string = format!(
                     "{}\t{}\n",
                     read.id(),

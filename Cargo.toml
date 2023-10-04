@@ -15,4 +15,4 @@ bincode = "*"
 serde = {version = "*", features = ["derive"]}
 num-traits = "*"
 rand = "*"
-bitvec = "*"
+bit-iter = "*"

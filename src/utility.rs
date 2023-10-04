@@ -83,25 +83,25 @@ pub fn sf(n: u64, p: f64, x: u64) -> f64 {
 }
 
 pub fn vec_dna_bytes_to_u32(kmer: &[u8]) -> Option<u32> {
-    let mut acc = 0;
+    let mut num = 0;
     for (kmer_position, n) in kmer.iter().rev().enumerate() {
         if *n == b'A' {
-            // binary is 00, don't need to add anything
+            // binary is 00, don't need to change anything
             continue;
         } else if *n == b'C' {
             // binary is 01
-            acc += 1_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
+            num |= 1_u32 << (kmer_position << 1)
         } else if *n == b'G' {
             // binary is 10
-            acc += 2_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
+            num |= 2_u32 << (kmer_position << 1)
         } else if *n == b'T' {
             // binary is 11
-            acc += 3_u32 * 2_u32.pow(2_u32 * kmer_position as u32)
+            num |= 3_u32 << (kmer_position << 1)
         } else {
             return None;
         }
     }
-    Some(acc)
+    Some(num)
 }
 
 pub fn get_kmers_as_u32(sequence: Sequence, kmer_len: usize) -> HashSet<u32> {
