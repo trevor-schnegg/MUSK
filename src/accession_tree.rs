@@ -18,10 +18,10 @@ impl AccessionTree {
     }
 
     /// Pushes the new node to the tree, returns the index of the new node
-    pub fn push_new_node(&mut self, node: AccessionTreeNode) -> i32 {
+    pub fn push_new_node(&mut self, node: AccessionTreeNode) -> usize {
         let index = self.nodes.len();
         self.nodes.push(node);
-        index as i32
+        index
     }
 
     pub fn get_all_accession_indices(&self, index: i32) -> Vec<i32> {
@@ -35,7 +35,7 @@ impl AccessionTree {
         vec
     }
 
-    pub fn get_accession_of_index(&self, accession_index: i32) -> &str {
+    pub fn get_accession_of_index(&self, accession_index: usize) -> &str {
         if let Accession(str) = self.nodes.get(accession_index as usize).unwrap() {
             &*str
         } else {

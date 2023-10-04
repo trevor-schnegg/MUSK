@@ -3,3 +3,6 @@ pub mod database;
 pub mod generator;
 pub mod io;
 pub mod utility;
+
+#[cfg(test)]
+mod tests;
