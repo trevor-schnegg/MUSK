@@ -1,25 +1,27 @@
 use crate::utility::Sequence::Double;
 use crate::utility::{get_kmers_as_u32, vec_dna_bytes_to_u32};
 use serde::{Deserialize, Serialize};
-use statrs::distribution::{DiscreteCDF, Binomial};
+use statrs::distribution::{DiscreteCDF, Hypergeometric};
 use std::collections::{HashMap, HashSet};
 use bit_iter::BitIter;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
-    index2probability: HashMap<usize, f64>,
+    index2kmer_count: Vec<u64>,
     kmer_len: usize,
     accessions: Vec<String>,
     point2occ: Vec<u16>,
+    num_kmers: u64,
 }
 
 impl Database {
     pub fn new(kmer_len: usize) -> Self {
         Database {
-            index2probability: HashMap::new(),
+            index2kmer_count: Vec::new(),
             accessions: Vec::new(),
             kmer_len,
             point2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
+            num_kmers: 4_usize.pow(kmer_len as u32) as u64,
         }
     }
 
@@ -39,7 +41,7 @@ impl Database {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.index2probability.insert(accession_index, insert_count as f64 / 4.0_f64.powi(self.kmer_len as i32));
+        self.index2kmer_count.push(insert_count as u64);
     }
 
     pub fn query_read(
@@ -93,10 +95,11 @@ impl Database {
         let mut best_prob = 1.0;
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
-            let p = self.get_probability_of_index(accession_index);
-            let prob = Binomial::new(
-                p,
-                num_queries,
+            let num_accession_kmers = self.get_num_kmers_of_index(accession_index);
+            let prob = Hypergeometric::new(
+                self.num_kmers,
+                num_accession_kmers,
+                num_queries
             )
             .unwrap()
             .sf(num_hits);
@@ -143,10 +146,10 @@ impl Database {
     //     kmers
     // }
 
-    fn get_probability_of_index(&self, accession_index: usize) -> f64 {
+    fn get_num_kmers_of_index(&self, accession_index: usize) -> u64 {
         *self
-            .index2probability
-            .get(&accession_index)
+            .index2kmer_count
+            .get(accession_index)
             .expect(&*format!(
                 "accession index {} does not have a probability",
                 accession_index
