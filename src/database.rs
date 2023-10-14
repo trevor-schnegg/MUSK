@@ -1,9 +1,9 @@
 use crate::utility::Sequence::Double;
 use crate::utility::{get_kmers_as_u32, vec_dna_bytes_to_u32};
+use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{DiscreteCDF, Hypergeometric};
 use std::collections::{HashMap, HashSet};
-use bit_iter::BitIter;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
@@ -39,7 +39,6 @@ impl Database {
         let record_kmer_set = get_kmers_as_u32(Double(forward_seq, reverse_seq), self.kmer_len);
         let insert_count = record_kmer_set.len();
 
-
         self.insert_kmers(record_kmer_set, accession_index);
 
         self.index2kmer_count.push(insert_count as u64);
@@ -64,11 +63,7 @@ impl Database {
                 continue;
             }
             already_queried.insert(kmer);
-            for index_of_one in BitIter::from(*self
-                .point2occ
-                .get(kmer as usize)
-                .unwrap())
-            {
+            for index_of_one in BitIter::from(*self.point2occ.get(kmer as usize).unwrap()) {
                 match index_to_hit_counts.get_mut(&index_of_one) {
                     None => {
                         index_to_hit_counts.insert(index_of_one, 1_u64);
@@ -97,13 +92,9 @@ impl Database {
         let mut best_prob_index = None;
         for (accession_index, num_hits) in index_to_hit_counts {
             let num_accession_kmers = self.get_num_kmers_of_index(accession_index);
-            let prob = Hypergeometric::new(
-                self.num_kmers,
-                num_accession_kmers,
-                num_queries
-            )
-            .unwrap()
-            .sf(num_hits);
+            let prob = Hypergeometric::new(self.num_kmers, num_accession_kmers, num_queries)
+                .unwrap()
+                .sf(num_hits);
             println!("{}\t{}", self.get_accession_of_index(accession_index), prob);
             if prob < best_prob {
                 best_prob = prob;
@@ -148,13 +139,10 @@ impl Database {
     // }
 
     fn get_num_kmers_of_index(&self, accession_index: usize) -> u64 {
-        *self
-            .index2kmer_count
-            .get(accession_index)
-            .expect(&*format!(
-                "accession index {} does not have a probability",
-                accession_index
-            ))
+        *self.index2kmer_count.get(accession_index).expect(&*format!(
+            "accession index {} does not have a probability",
+            accession_index
+        ))
     }
 
     fn get_accession_of_index(&self, accession_index: usize) -> &str {
