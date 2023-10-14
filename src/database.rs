@@ -95,7 +95,7 @@ impl Database {
             let prob = Hypergeometric::new(self.num_kmers, num_accession_kmers, num_queries)
                 .unwrap()
                 .sf(num_hits);
-            println!("{}\t{}", self.get_accession_of_index(accession_index), prob);
+            // println!("{}\t{}", self.get_accession_of_index(accession_index), prob);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);

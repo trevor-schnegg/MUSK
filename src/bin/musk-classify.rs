@@ -75,7 +75,7 @@ fn main() {
                     .expect("failed to write to output file");
             }
             Some(accession) => {
-                println!("{}", read.id());
+                // println!("{}", read.id());
                 let string = format!(
                     "{}\t{}\n",
                     read.id(),
