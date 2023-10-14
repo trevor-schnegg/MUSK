@@ -1,10 +1,10 @@
 use bincode::serialize;
 use clap::Parser;
-use log::{debug, info};
+use log::{debug, error, info};
 use musk::database::Database;
 use musk::io::dump_data_to_file;
 use musk::utility::{
-    convert_to_uppercase, create_fasta_iterator_from_file, get_fasta_files, reverse_complement,
+    convert_to_uppercase, get_fasta_files, get_fasta_iterator_of_file, reverse_complement,
 };
 use std::path::Path;
 
@@ -13,6 +13,10 @@ use std::path::Path;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, default_value_t = 15)]
+    /// Length of k-mer to use in the database
+    kmer_length: usize,
+
     #[arg()]
     /// Location to store the resulting index
     index_out: String,
@@ -34,17 +38,22 @@ fn main() {
     let index_out = Path::new(&args.index_out);
     let reference_loc = Path::new(&args.reference_loc);
 
+    if args.kmer_length > 16 || args.kmer_length < 8 {
+        error!("k-kmer length not in 8 <= k <= 16");
+        panic!();
+    }
+
     // Create database variable
-    let mut database = Database::new(15);
+    let mut database = Database::new(args.kmer_length);
 
     // Create database
     info!("Creating database");
     let mut fasta_files = get_fasta_files(reference_loc).into_iter();
     while let Some(file) = fasta_files.next() {
         debug!("reading file: {}", file);
-        let mut record_iter = create_fasta_iterator_from_file(Path::new(&file));
+        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
-            if record.seq().len() < 15 {
+            if record.seq().len() < args.kmer_length {
                 continue;
             }
             let uppercase_record_seq = convert_to_uppercase(record.seq());
