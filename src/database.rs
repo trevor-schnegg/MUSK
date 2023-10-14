@@ -39,6 +39,7 @@ impl Database {
         let record_kmer_set = get_kmers_as_u32(Double(forward_seq, reverse_seq), self.kmer_len);
         let insert_count = record_kmer_set.len();
 
+
         self.insert_kmers(record_kmer_set, accession_index);
 
         self.index2kmer_count.push(insert_count as u64);
