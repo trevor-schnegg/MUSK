@@ -4,25 +4,38 @@ use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{DiscreteCDF, Hypergeometric};
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
-pub struct Database {
+pub struct Database<T> {
     index2kmer_count: Vec<u64>,
     kmer_len: usize,
     accessions: Vec<String>,
-    point2occ: Vec<u16>,
+    point2occ: Vec<T>,
     num_kmers: u64,
 }
 
-impl Database {
+impl Database<u32> {
     pub fn new(kmer_len: usize) -> Self {
         Database {
             index2kmer_count: Vec::new(),
             accessions: Vec::new(),
             kmer_len,
-            point2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
+            point2occ: vec![0_u32; 4_usize.pow(kmer_len as u32)],
             num_kmers: 4_usize.pow(kmer_len as u32) as u64,
         }
+    }
+
+    pub fn load(file: &Path) -> Self {
+        let mut f = File::open(file).expect(&*format!("could not open database file at {:?}", file));
+        let mut buf: Vec<u8> = vec![];
+        f.read_to_end(&mut buf).unwrap();
+        bincode::deserialize(&*buf).expect(&*format!(
+            "could not deserialize database file at {:?}",
+            file
+        ))
     }
 
     pub fn insert_record(
@@ -95,7 +108,6 @@ impl Database {
             let prob = Hypergeometric::new(self.num_kmers, num_accession_kmers, num_queries)
                 .unwrap()
                 .sf(num_hits);
-            // println!("{}\t{}", self.get_accession_of_index(accession_index), prob);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);
@@ -115,28 +127,9 @@ impl Database {
 
     fn insert_kmers(&mut self, kmers: HashSet<u32>, accession_index: usize) -> () {
         for kmer in kmers {
-            *self.point2occ.get_mut(kmer as usize).unwrap() |= 1_u16 << accession_index
+            *self.point2occ.get_mut(kmer as usize).unwrap() |= 1_u32 << accession_index
         }
     }
-
-    // fn create_kmer_set(&self, size: usize) -> HashSet<u32> {
-    //     let random_read = create_random_read(size + self.kmer_len - 1);
-    //     let mut last_kmer = random_read.get(random_read.len()-1-self.kmer_len..random_read.len()-1).unwrap().to_string();
-    //     let mut kmers = get_kmers_as_u32(Single(random_read), self.kmer_len);
-    //     while kmers.len() < size {
-    //         let new_kmer = create_random_read(self.kmer_len);
-    //         last_kmer += &*new_kmer;
-    //         let new_kmers = get_kmers_as_u32(Single(last_kmer.clone()), self.kmer_len);
-    //         for kmer in new_kmers {
-    //             kmers.insert(kmer);
-    //             if kmers.len() >= size {
-    //                 break
-    //             }
-    //         }
-    //         last_kmer = new_kmer;
-    //     }
-    //     kmers
-    // }
 
     fn get_num_kmers_of_index(&self, accession_index: usize) -> u64 {
         *self.index2kmer_count.get(accession_index).expect(&*format!(

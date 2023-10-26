@@ -1,8 +1,7 @@
-use crate::database::Database;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 pub fn load_accession2taxid(accession2taxid_path: &Path) -> HashMap<String, u32> {
@@ -22,14 +21,4 @@ pub fn load_accession2taxid(accession2taxid_path: &Path) -> HashMap<String, u32>
 pub fn dump_data_to_file(data: Vec<u8>, file: &Path) -> io::Result<()> {
     let mut f = File::create(file).expect(&*format!("Could not create file {:?}", file));
     f.write_all(&*data)
-}
-
-pub fn load_database(file: &Path) -> Database {
-    let mut f = File::open(file).expect(&*format!("could not open database file at {:?}", file));
-    let mut buf: Vec<u8> = vec![];
-    f.read_to_end(&mut buf).unwrap();
-    bincode::deserialize(&*buf).expect(&*format!(
-        "could not deserialize database file at {:?}",
-        file
-    ))
 }

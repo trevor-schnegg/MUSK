@@ -7,6 +7,7 @@ use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use log::warn;
 
 pub enum Sequence {
     Single(String),
@@ -22,6 +23,7 @@ pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
                 if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna") {
                     Some(entry.path().to_str().unwrap().to_string())
                 } else {
+                    warn!("Found directory entry '{:?}' that did not end with '.fna'", entry);
                     None
                 }
             } else {

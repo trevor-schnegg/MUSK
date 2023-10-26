@@ -1,11 +1,12 @@
 use clap::Parser;
 use log::{debug, info};
-use musk::io::{load_accession2taxid, load_database};
+use musk::io::{load_accession2taxid};
 use musk::utility::{convert_to_uppercase, get_fasta_iterator_of_file};
 use std::fs::File;
 use std::io::Write;
 use std::ops::Neg;
 use std::path::Path;
+use musk::database::Database;
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -53,7 +54,7 @@ fn main() {
     info!("accession2taxid loaded!");
 
     info!("Loading database");
-    let database = load_database(Path::new(&args.index));
+    let database = Database::load(Path::new(&args.index));
     info!("Database loaded!");
 
     let mut output_file = File::create(output_file)
