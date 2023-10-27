@@ -1,11 +1,9 @@
 use bincode::serialize;
 use clap::Parser;
-use log::{debug, error, info};
+use log::{debug, info};
 use musk::database::Database;
 use musk::io::dump_data_to_file;
-use musk::utility::{
-    convert_to_uppercase, get_fasta_files, get_fasta_iterator_of_file, reverse_complement,
-};
+use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
 use std::path::Path;
 
 /// Converts a fasta directory to a database
@@ -16,6 +14,10 @@ struct Args {
     #[arg(short, long, default_value_t = 15)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
+
+    #[arg(short, long, default_value_t = 180)]
+    /// Length of k-mer to use in the database
+    num_queries: usize,
 
     #[arg()]
     /// Location to store the resulting index
@@ -38,13 +40,8 @@ fn main() {
     let index_out = Path::new(&args.index_out);
     let reference_loc = Path::new(&args.reference_loc);
 
-    if args.kmer_length > 16 || args.kmer_length < 8 {
-        error!("k-kmer length not in 8 <= k <= 16");
-        panic!();
-    }
-
     // Create database variable
-    let mut database = Database::new(args.kmer_length);
+    let mut database = Database::new(args.kmer_length, args.num_queries);
 
     // Create database
     info!("Creating database");
@@ -56,20 +53,15 @@ fn main() {
             if record.seq().len() < args.kmer_length {
                 continue;
             }
-            let uppercase_record_seq = convert_to_uppercase(record.seq());
-            let reverse_complement_seq = reverse_complement(&*uppercase_record_seq);
-            database.insert_record(
-                uppercase_record_seq,
-                reverse_complement_seq,
-                record.id().to_string(),
-            );
+            debug!("inserting record {}", record.id());
+            database.insert_record(record);
         }
     }
     dump_data_to_file(
         serialize(&database).expect("could not serialize database"),
         index_out,
     )
-    .expect("could not write database to file");
+    .expect(&*format!("could not write database to {:?}", index_out));
 
-    info!("Database created!");
+    info!("Database creation complete!");
 } // end main
