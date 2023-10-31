@@ -53,7 +53,6 @@ fn main() {
             if record.seq().len() < args.kmer_length {
                 continue;
             }
-            debug!("inserting record {}", record.id());
             database.insert_record(record);
         }
     }

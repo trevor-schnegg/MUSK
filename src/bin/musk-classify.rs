@@ -61,11 +61,11 @@ fn main() {
         let accession = database.query_read(read, args.num_queries, true_exponent);
         match accession {
             None => {
-                println!("{}\t0\n", read_id);
+                println!("{}\t0", read_id);
             }
             Some(accession) => {
                 println!(
-                    "{}\t{}\n",
+                    "{}\t{}",
                     read_id,
                     accession2taxid.get(accession).unwrap()
                 );

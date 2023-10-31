@@ -47,7 +47,7 @@ impl Database<u32> {
         let accession_index = self.accessions.len();
         self.accessions.push(record.id().to_string());
 
-        let record_kmer_set = self.get_kmers_as_u32(record.seq(), false);
+        let record_kmer_set = self.get_kmers_as_u32(record.seq(), true);
         let insert_count = record_kmer_set.len();
 
         self.insert_kmers(record_kmer_set, accession_index);
@@ -104,7 +104,7 @@ impl Database<u32> {
         required_probability_exponent: Option<i32>,
     ) -> Option<&str> {
         let needed_probability = { match required_probability_exponent {
-            None => {1e-12}
+            None => {1e-3}
             Some(exp) => {10.0_f64.powi(exp)}
         }};
         let mut best_prob = 1.0;
@@ -138,7 +138,23 @@ impl Database<u32> {
         let population = self.num_kmers;
         let trials = self.max_num_queries;
         let hypergeometric = Hypergeometric::new(population, successes, trials as u64).unwrap();
-        hypergeometric.inverse_cdf(1.0 - 1e-6)
+        let p = 1.0 - 1e-3;
+
+        let mut high = 1;
+        let mut low = 0;
+        while hypergeometric.cdf(high) < p {
+            low = high;
+            high <<= 1;
+        }
+        while high != low {
+            let mid = (high + low) / 2;
+            if hypergeometric.cdf(mid) >= p {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+        high
     }
 
     fn get_kmers_as_u32(&self, sequence: &[u8], do_reverse_compliment: bool) -> HashSet<u32> {
