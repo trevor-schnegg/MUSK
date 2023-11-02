@@ -2,7 +2,7 @@ use crate::utility::{reverse_complement, vec_dna_bytes_to_u32};
 use bio::io::fasta::Record;
 use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
-use statrs::distribution::{DiscreteCDF, Hypergeometric};
+use statrs::distribution::{Binomial, DiscreteCDF};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
@@ -10,23 +10,21 @@ use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
-    index2num_kmers: Vec<u64>,
-    index2required_hits: Vec<u64>,
+    probabilities: Vec<f64>,
     kmer_len: usize,
     accessions: Vec<String>,
-    point2occ: Vec<T>,
+    kmer2occ: Vec<T>,
     num_kmers: u64,
     max_num_queries: usize,
 }
 
-impl Database<u32> {
+impl Database<u16> {
     pub fn new(kmer_len: usize, num_queries: usize) -> Self {
         Database {
-            index2num_kmers: Vec::new(),
-            index2required_hits: Vec::new(),
+            probabilities: Vec::new(),
             accessions: Vec::new(),
             kmer_len,
-            point2occ: vec![0_u32; 4_usize.pow(kmer_len as u32)],
+            kmer2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
             num_kmers: 4_usize.pow(kmer_len as u32) as u64,
             max_num_queries: num_queries,
         }
@@ -52,8 +50,7 @@ impl Database<u32> {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.index2num_kmers.push(insert_count as u64);
-        self.index2required_hits.push(self.get_needed_num_queries(insert_count as u64));
+        self.probabilities.push(insert_count as f64 / self.num_kmers as f64);
     }
 
     pub fn query_read(
@@ -66,40 +63,45 @@ impl Database<u32> {
             None => {self.max_num_queries}
             Some(n) => {n}
         };
-        let mut already_queried = HashSet::new();
         let mut index_to_hit_counts = HashMap::new();
         let mut kmer_iter = read
             .seq()
             .windows(self.kmer_len)
-            .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes));
-        while let Some(kmer) = kmer_iter.next() {
-            if already_queried.len() >= max_num_queries {
+            .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes))
+            .enumerate();
+        let mut max_index = 0_usize;
+        while let Some((idx, kmer)) = kmer_iter.next() {
+            if idx >= max_num_queries {
                 break;
-            } else if already_queried.contains(&kmer) {
-                continue;
             }
-            already_queried.insert(kmer);
-            for index in BitIter::from(*self.point2occ.get(kmer as usize).unwrap()) {
+            for index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
                 match index_to_hit_counts.get_mut(&index) {
                     None => {
-                        index_to_hit_counts.insert(index, 1_u64);
+                        index_to_hit_counts.insert(index, (1_u64, 0_u64, idx));
                     }
-                    Some(count) => {
-                        *count += 1;
+                    Some(counts) => {
+                        if counts.2 == idx - 1 {
+                            counts.1 += 1;
+                            counts.2 = idx;
+                        } else {
+                            counts.0 += 1;
+                            counts.2 = idx;
+                        }
                     }
                 }
             }
+            max_index = idx;
         }
         self.calculate_result(
             index_to_hit_counts,
-            already_queried.len() as u64,
+            max_index as u64 + 1,
             required_probability_exponent,
         )
     }
 
     fn calculate_result(
         &self,
-        index_to_hit_counts: HashMap<usize, u64>,
+        index_to_hit_counts: HashMap<usize, (u64, u64, usize)>,
         num_queries: u64,
         required_probability_exponent: Option<i32>,
     ) -> Option<&str> {
@@ -109,14 +111,15 @@ impl Database<u32> {
         }};
         let mut best_prob = 1.0;
         let mut best_prob_index = None;
-        for (accession_index, num_hits) in index_to_hit_counts {
-            if num_queries == self.max_num_queries as u64 && num_hits < *self.index2required_hits.get(accession_index).unwrap() {
-                continue;
-            }
-            let num_accession_kmers = self.get_num_kmers_of_index(accession_index);
-            let prob = Hypergeometric::new(self.num_kmers, num_accession_kmers, num_queries)
-                .unwrap()
-                .sf(num_hits);
+        for (accession_index, (num_starts, num_extends, _)) in index_to_hit_counts {
+            let index_probability = self.get_prob_of_index(accession_index);
+            let prob = {
+                let starts_prob = Binomial::new(index_probability, num_queries - (num_extends +  num_starts))
+                    .unwrap()
+                    .sf(num_starts);
+                let extends_prob = Binomial::new(0.25, num_extends + num_starts).unwrap().sf(num_extends);
+                starts_prob * extends_prob
+            };
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);
@@ -132,29 +135,6 @@ impl Database<u32> {
                 }
             }
         }
-    }
-
-    fn get_needed_num_queries(&self, successes: u64) -> u64 {
-        let population = self.num_kmers;
-        let trials = self.max_num_queries;
-        let hypergeometric = Hypergeometric::new(population, successes, trials as u64).unwrap();
-        let p = 1.0 - 1e-3;
-
-        let mut high = 1;
-        let mut low = 0;
-        while hypergeometric.cdf(high) < p {
-            low = high;
-            high <<= 1;
-        }
-        while high != low {
-            let mid = (high + low) / 2;
-            if hypergeometric.cdf(mid) >= p {
-                high = mid;
-            } else {
-                low = mid + 1;
-            }
-        }
-        high
     }
 
     fn get_kmers_as_u32(&self, sequence: &[u8], do_reverse_compliment: bool) -> HashSet<u32> {
@@ -178,14 +158,14 @@ impl Database<u32> {
     }
 
     fn insert_kmers(&mut self, kmers: HashSet<u32>, accession_index: usize) -> () {
-        let bit_to_set = 1_u32 << accession_index;
+        let bit_to_set = 1_u16 << accession_index;
         for kmer in kmers {
-            *self.point2occ.get_mut(kmer as usize).unwrap() |= bit_to_set
+            *self.kmer2occ.get_mut(kmer as usize).unwrap() |= bit_to_set
         }
     }
 
-    fn get_num_kmers_of_index(&self, accession_index: usize) -> u64 {
-        *self.index2num_kmers.get(accession_index).expect(&*format!(
+    fn get_prob_of_index(&self, accession_index: usize) -> f64 {
+        *self.probabilities.get(accession_index).expect(&*format!(
             "accession index {} does not have a probability",
             accession_index
         ))
