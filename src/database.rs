@@ -11,6 +11,7 @@ use std::path::Path;
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
     probabilities: Vec<f64>,
+    binomial_calculations: HashMap<u64, f64>,
     kmer_len: usize,
     accessions: Vec<String>,
     kmer2occ: Vec<T>,
@@ -20,8 +21,15 @@ pub struct Database<T> {
 
 impl Database<u16> {
     pub fn new(kmer_len: usize, num_queries: usize) -> Self {
+        let mut binomial_calculations = HashMap::new();
+        for (hits, sf) in
+            (0..29_u64).map(|x| (x + 1, Binomial::new(0.25, x + 2).unwrap().sf(x + 1)))
+        {
+            binomial_calculations.insert(hits, sf);
+        }
         Database {
             probabilities: Vec::new(),
+            binomial_calculations,
             accessions: Vec::new(),
             kmer_len,
             kmer2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
@@ -50,7 +58,8 @@ impl Database<u16> {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.probabilities.push(insert_count as f64 / self.num_kmers as f64);
+        self.probabilities
+            .push(insert_count as f64 / self.num_kmers as f64);
     }
 
     pub fn query_read(
@@ -60,8 +69,8 @@ impl Database<u16> {
         required_probability_exponent: Option<i32>,
     ) -> Option<&str> {
         let max_num_queries = match num_queries {
-            None => {self.max_num_queries}
-            Some(n) => {n}
+            None => self.max_num_queries,
+            Some(n) => n,
         };
         let mut index_to_hit_counts = HashMap::new();
         let mut kmer_iter = read
@@ -105,20 +114,25 @@ impl Database<u16> {
         num_queries: u64,
         required_probability_exponent: Option<i32>,
     ) -> Option<&str> {
-        let needed_probability = { match required_probability_exponent {
-            None => {1e-3}
-            Some(exp) => {10.0_f64.powi(exp)}
-        }};
+        let needed_probability = {
+            match required_probability_exponent {
+                None => 1e-3,
+                Some(exp) => 10.0_f64.powi(exp),
+            }
+        };
         let mut best_prob = 1.0;
         let mut best_prob_index = None;
         for (accession_index, (num_starts, num_extends, _)) in index_to_hit_counts {
             let index_probability = self.get_prob_of_index(accession_index);
             let prob = {
-                let starts_prob = Binomial::new(index_probability, num_queries - (num_extends +  num_starts))
+                let prob_starts =
+                    Binomial::new(index_probability, num_queries - (num_extends + num_starts))
+                        .unwrap()
+                        .sf(num_starts);
+                let prob_extends = Binomial::new(0.25, num_extends + num_starts)
                     .unwrap()
-                    .sf(num_starts);
-                let extends_prob = Binomial::new(0.25, num_extends + num_starts).unwrap().sf(num_extends);
-                starts_prob * extends_prob
+                    .sf(num_extends);
+                prob_starts * prob_extends
             };
             if prob < best_prob {
                 best_prob = prob;
