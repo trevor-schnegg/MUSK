@@ -10,8 +10,8 @@ use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
-    probabilities: Vec<f64>,
-    binomial_calculations: HashMap<u64, f64>,
+    open_probabilities: Vec<f64>,
+    extend_probabilities: Option<Vec<f64>>,
     kmer_len: usize,
     accessions: Vec<String>,
     kmer2occ: Vec<T>,
@@ -21,15 +21,9 @@ pub struct Database<T> {
 
 impl Database<u16> {
     pub fn new(kmer_len: usize, num_queries: usize) -> Self {
-        let mut binomial_calculations = HashMap::new();
-        for (hits, sf) in
-            (0..29_u64).map(|x| (x + 1, Binomial::new(0.25, x + 2).unwrap().sf(x + 1)))
-        {
-            binomial_calculations.insert(hits, sf);
-        }
         Database {
-            probabilities: Vec::new(),
-            binomial_calculations,
+            open_probabilities: Vec::new(),
+            extend_probabilities: None,
             accessions: Vec::new(),
             kmer_len,
             kmer2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
@@ -58,11 +52,11 @@ impl Database<u16> {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.probabilities
+        self.open_probabilities
             .push(insert_count as f64 / self.num_kmers as f64);
     }
 
-    pub fn query_read(
+    pub fn classify_read(
         &self,
         read: Record,
         num_queries: Option<usize>,
@@ -72,17 +66,24 @@ impl Database<u16> {
             None => self.max_num_queries,
             Some(n) => n,
         };
-        let mut index_to_hit_counts = HashMap::new();
-        let mut kmer_iter = read
+        let kmers = read
             .seq()
             .windows(self.kmer_len)
             .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes))
-            .enumerate();
-        let mut max_index = 0_usize;
+            .take(max_num_queries)
+            .collect::<Vec<u32>>();
+        let num_queries = kmers.len();
+        self.calculate_result(
+            self.collect_hits(kmers),
+            num_queries as u64,
+            required_probability_exponent,
+        )
+    }
+
+    fn collect_hits(&self, kmers: Vec<u32>) -> HashMap<usize, (u64, u64, usize)> {
+        let mut index_to_hit_counts = HashMap::new();
+        let mut kmer_iter = kmers.into_iter().enumerate();
         while let Some((idx, kmer)) = kmer_iter.next() {
-            if idx >= max_num_queries {
-                break;
-            }
             for index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
                 match index_to_hit_counts.get_mut(&index) {
                     None => {
@@ -91,21 +92,15 @@ impl Database<u16> {
                     Some(counts) => {
                         if counts.2 == idx - 1 {
                             counts.1 += 1;
-                            counts.2 = idx;
                         } else {
                             counts.0 += 1;
-                            counts.2 = idx;
                         }
+                        counts.2 = idx;
                     }
                 }
             }
-            max_index = idx;
         }
-        self.calculate_result(
-            index_to_hit_counts,
-            max_index as u64 + 1,
-            required_probability_exponent,
-        )
+        index_to_hit_counts
     }
 
     fn calculate_result(
@@ -120,16 +115,19 @@ impl Database<u16> {
                 Some(exp) => 10.0_f64.powi(exp),
             }
         };
-        let mut best_prob = 1.0;
-        let mut best_prob_index = None;
+        let (mut best_prob, mut best_prob_index) = (1.0, None);
         for (accession_index, (num_starts, num_extends, _)) in index_to_hit_counts {
-            let index_probability = self.get_prob_of_index(accession_index);
+            let (open_prob, extend_prob) = self.get_probs_of_index(accession_index);
+            let extend_prob = match extend_prob {
+                None => 0.25,
+                Some(prob) => prob,
+            };
             let prob = {
                 let prob_starts =
-                    Binomial::new(index_probability, num_queries - (num_extends + num_starts))
+                    Binomial::new(open_prob, num_queries - (num_extends + num_starts))
                         .unwrap()
                         .sf(num_starts);
-                let prob_extends = Binomial::new(0.25, num_extends + num_starts)
+                let prob_extends = Binomial::new(extend_prob, num_extends + num_starts)
                     .unwrap()
                     .sf(num_extends);
                 prob_starts * prob_extends
@@ -178,11 +176,19 @@ impl Database<u16> {
         }
     }
 
-    fn get_prob_of_index(&self, accession_index: usize) -> f64 {
-        *self.probabilities.get(accession_index).expect(&*format!(
-            "accession index {} does not have a probability",
-            accession_index
-        ))
+    fn get_probs_of_index(&self, accession_index: usize) -> (f64, Option<f64>) {
+        let open_prob = *self
+            .open_probabilities
+            .get(accession_index)
+            .expect(&*format!(
+                "accession index {} does not have a probability",
+                accession_index
+            ));
+        let extend_prob = match &self.extend_probabilities {
+            None => None,
+            Some(map) => Some(*map.get(accession_index).unwrap()),
+        };
+        (open_prob, extend_prob)
     }
 
     fn get_accession_of_index(&self, accession_index: usize) -> &str {

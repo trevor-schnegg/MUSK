@@ -58,7 +58,7 @@ fn main() {
     let mut read_query_count = 0_usize;
     while let Some(Ok(read)) = read_iter.next() {
         let read_id = read.id().to_string();
-        let accession = database.query_read(read, args.num_queries, true_exponent);
+        let accession = database.classify_read(read, args.num_queries, true_exponent);
         match accession {
             None => {
                 println!("{}\t0", read_id);
