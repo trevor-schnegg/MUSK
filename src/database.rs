@@ -7,10 +7,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use crate::generator::create_random_read;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
-    open_probabilities: Vec<f64>,
+    start_probabilities: Vec<f64>,
     extend_probabilities: Option<Vec<f64>>,
     kmer_len: usize,
     accessions: Vec<String>,
@@ -22,7 +23,7 @@ pub struct Database<T> {
 impl Database<u16> {
     pub fn new(kmer_len: usize, num_queries: usize) -> Self {
         Database {
-            open_probabilities: Vec::new(),
+            start_probabilities: Vec::new(),
             extend_probabilities: None,
             accessions: Vec::new(),
             kmer_len,
@@ -52,7 +53,7 @@ impl Database<u16> {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.open_probabilities
+        self.start_probabilities
             .push(insert_count as f64 / self.num_kmers as f64);
     }
 
@@ -73,11 +74,41 @@ impl Database<u16> {
             .take(max_num_queries)
             .collect::<Vec<u32>>();
         let num_queries = kmers.len();
-        self.calculate_result(
+        self.classify_hits(
             self.collect_hits(kmers),
             num_queries as u64,
             required_probability_exponent,
         )
+    }
+
+    pub fn update_probabilities_empirically(&mut self, read_len: usize) -> () {
+        let random_read = create_random_read(read_len);
+        let kmers = random_read
+            .as_bytes()
+            .windows(self.kmer_len)
+            .map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes).unwrap())
+            .collect::<Vec<u32>>();
+        let num_queries = kmers.len() as u64;
+        let index_to_hit_counts = self.collect_hits(kmers);
+        for (index, (num_starts, num_extends, _)) in index_to_hit_counts {
+            let (orig_start_prob, orig_extend_prob) = self.get_probs_of_index(index);
+            let num_random_queries = num_queries - (num_starts + num_extends);
+            let num_extend_queries = num_starts + num_extends;
+            let observed_start_prob = num_starts as f64 / num_random_queries as f64;
+            let observed_extend_prob = num_extends as f64 / num_extend_queries as f64;
+            println!("start probability was originally: {}, observed start probability was: {}", orig_start_prob, observed_start_prob);
+            println!("extend probability was originally: {:?}, observed extend probability was: {}", orig_extend_prob, observed_extend_prob);
+            *self.start_probabilities.get_mut(index).unwrap() = observed_start_prob;
+            match &mut self.extend_probabilities {
+                Some(vec) => {
+                    *vec.get_mut(index).unwrap() = observed_extend_prob;
+                },
+                none=> {
+                    *none = Some(vec![0.25; self.start_probabilities.len()]);
+                    *none.as_mut().unwrap().get_mut(index).unwrap() = observed_extend_prob;
+                }
+            }
+        }
     }
 
     fn collect_hits(&self, kmers: Vec<u32>) -> HashMap<usize, (u64, u64, usize)> {
@@ -103,7 +134,7 @@ impl Database<u16> {
         index_to_hit_counts
     }
 
-    fn calculate_result(
+    fn classify_hits(
         &self,
         index_to_hit_counts: HashMap<usize, (u64, u64, usize)>,
         num_queries: u64,
@@ -178,12 +209,9 @@ impl Database<u16> {
 
     fn get_probs_of_index(&self, accession_index: usize) -> (f64, Option<f64>) {
         let open_prob = *self
-            .open_probabilities
+            .start_probabilities
             .get(accession_index)
-            .expect(&*format!(
-                "accession index {} does not have a probability",
-                accession_index
-            ));
+            .unwrap();
         let extend_prob = match &self.extend_probabilities {
             None => None,
             Some(map) => Some(*map.get(accession_index).unwrap()),
