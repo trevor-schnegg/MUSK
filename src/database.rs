@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use crate::hit_counter::HitCounter;
 use crate::generator::create_random_read;
 
 #[derive(Serialize, Deserialize)]
@@ -88,16 +89,30 @@ impl Database<u16> {
             .windows(self.kmer_len)
             .map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes).unwrap())
             .collect::<Vec<u32>>();
-        let num_queries = kmers.len() as u64;
-        let index_to_hit_counts = self.collect_hits(kmers);
-        for (index, (num_starts, num_extends, _)) in index_to_hit_counts {
+        let mut index_to_hit_counts = vec![HitCounter::new();9];
+        for kmer in kmers.into_iter() {
+            let set_bits = {
+                let mut set = HashSet::new();
+                for bit in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
+                    set.insert(bit);
+                }
+                set
+            };
+            for i in 0_usize..9_usize {
+                if set_bits.contains(&i) {
+                    index_to_hit_counts.get_mut(i).unwrap().hit();
+                } else {
+                    index_to_hit_counts.get_mut(i).unwrap().miss();
+                }
+            }
+        }
+        for (index, (m2m, m2nm, nm2m, nm2nm)) in index_to_hit_counts.into_iter().map(|x| x.get_counts()).enumerate() {
+            println!("match2match: {}, match2nonmatch: {}, nonmatch2match: {}, nonmatch2nonmatch: {}", m2m, m2nm, nm2m, nm2nm);
             let (orig_start_prob, orig_extend_prob) = self.get_probs_of_index(index);
-            let num_random_queries = num_queries - (num_starts + num_extends);
-            let num_extend_queries = num_starts + num_extends;
-            let observed_start_prob = num_starts as f64 / num_random_queries as f64;
-            let observed_extend_prob = num_extends as f64 / num_extend_queries as f64;
+            let observed_start_prob = nm2m as f64 / (nm2m + nm2nm) as f64;
+            let observed_extend_prob = m2m as f64 / (m2m + m2nm) as f64;
             println!("start probability was originally: {}, observed start probability was: {}", orig_start_prob, observed_start_prob);
-            println!("extend probability was originally: {:?}, observed extend probability was: {}", orig_extend_prob, observed_extend_prob);
+            println!("extend probability was originally: {:?}, observed extend probability was: {}\n", orig_extend_prob, observed_extend_prob);
             *self.start_probabilities.get_mut(index).unwrap() = observed_start_prob;
             match &mut self.extend_probabilities {
                 Some(vec) => {
@@ -109,6 +124,44 @@ impl Database<u16> {
                 }
             }
         }
+    }
+
+    pub fn quick_test(&self, read_len: usize) -> () {
+        let random_read = create_random_read(read_len);
+        let kmers = random_read
+            .as_bytes()
+            .windows(self.kmer_len)
+            .map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes).unwrap())
+            .collect::<Vec<u32>>();
+        let total_kmers = kmers.len() as f64;
+        let mut hit_counter = vec![0_usize;9];
+        for kmer in kmers {
+            for bit in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
+                *hit_counter.get_mut(bit).unwrap() += 1;
+            }
+        }
+        println!("{:?}", hit_counter.into_iter().map(|x| x as f64 / total_kmers).collect::<Vec<f64>>());
+    }
+
+    pub fn completely_random_kmer_test(&self, num_kmers: usize) -> () {
+        let mut hit_counts = vec![0_usize;9];
+        let mut curr_num = 0_usize;
+        while curr_num < num_kmers {
+            let kmer = vec_dna_bytes_to_u32(create_random_read(self.kmer_len).as_bytes()).unwrap();
+            for bit_index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
+                *hit_counts.get_mut(bit_index).unwrap() += 1;
+            }
+            curr_num += 1;
+        }
+        println!("{:?}", hit_counts.into_iter().map(|x| x as f64 / curr_num as f64).collect::<Vec<f64>>())
+    }
+
+    pub fn expected_hit_percentages(&self) -> Vec<f64> {
+        let mut collection = Vec::new();
+        for i in 0_usize..self.accessions.len() {
+            collection.push(*self.start_probabilities.get(i).unwrap())
+        }
+        collection
     }
 
     fn collect_hits(&self, kmers: Vec<u32>) -> HashMap<usize, (u64, u64, usize)> {

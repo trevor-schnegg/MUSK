@@ -15,8 +15,12 @@ struct Args {
     read_length: usize,
 
     #[arg()]
-    /// Name of the file to create a reference from
-    index: String,
+    /// Name of the file to read reference from
+    load_index: String,
+
+    #[arg()]
+    /// Name of the file to dump new reference to
+    dump_index: String,
 }
 
 fn main() {
@@ -24,7 +28,8 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let index = Path::new(&args.index);
+    let index = Path::new(&args.load_index);
+    let index_out = Path::new(&args.dump_index);
 
     info!("Loading database");
     let mut database = Database::load(index);
@@ -32,13 +37,17 @@ fn main() {
 
     info!("Beginning test");
 
+    println!("{:?}", database.expected_hit_percentages());
+    database.quick_test(10000000);
+    // database.completely_random_kmer_test(10000000);
+
     database.update_probabilities_empirically(args.read_length);
 
     dump_data_to_file(
         serialize(&database).expect("could not serialize database"),
-        index,
+        index_out,
     )
-    .expect(&*format!("could not write database to {:?}", index));
+    .expect(&*format!("could not write database to {:?}", index_out));
 
     info!("Done!")
 } // end main
