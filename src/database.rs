@@ -63,7 +63,7 @@ impl Database<u16> {
         read: Record,
         num_queries: Option<usize>,
         required_probability_exponent: Option<i32>,
-    ) -> Option<&str> {
+    ) -> (Option<&str>, f64) {
         let max_num_queries = match num_queries {
             None => self.max_num_queries,
             Some(n) => n,
@@ -126,7 +126,7 @@ impl Database<u16> {
         }
     }
 
-    pub fn quick_test(&self, read_len: usize) -> () {
+    pub fn random_read_test(&self, read_len: usize) -> () {
         let random_read = create_random_read(read_len);
         let kmers = random_read
             .as_bytes()
@@ -143,7 +143,7 @@ impl Database<u16> {
         println!("{:?}", hit_counter.into_iter().map(|x| x as f64 / total_kmers).collect::<Vec<f64>>());
     }
 
-    pub fn completely_random_kmer_test(&self, num_kmers: usize) -> () {
+    pub fn random_kmer_test(&self, num_kmers: usize) -> () {
         let mut hit_counts = vec![0_usize;9];
         let mut curr_num = 0_usize;
         while curr_num < num_kmers {
@@ -192,7 +192,7 @@ impl Database<u16> {
         index_to_hit_counts: HashMap<usize, (u64, u64, usize)>,
         num_queries: u64,
         required_probability_exponent: Option<i32>,
-    ) -> Option<&str> {
+    ) -> (Option<&str>, f64) {
         let needed_probability = {
             match required_probability_exponent {
                 None => 1e-3,
@@ -222,12 +222,12 @@ impl Database<u16> {
             }
         }
         match best_prob_index {
-            None => None,
+            None => (None, best_prob),
             Some(index) => {
                 if best_prob < needed_probability {
-                    Some(self.get_accession_of_index(index))
+                    (Some(self.get_accession_of_index(index)), best_prob)
                 } else {
-                    None
+                    (None, best_prob)
                 }
             }
         }

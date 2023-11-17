@@ -38,8 +38,8 @@ fn main() {
     info!("Beginning test");
 
     println!("{:?}", database.expected_hit_percentages());
-    database.quick_test(10000000);
-    // database.completely_random_kmer_test(10000000);
+    database.random_read_test(10000000);
+    database.random_kmer_test(10000000);
 
     database.update_probabilities_empirically(args.read_length);
 

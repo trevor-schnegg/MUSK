@@ -56,9 +56,17 @@ fn main() {
     info!("Beginning classification");
     let mut read_iter = get_fasta_iterator_of_file(reads_file);
     let mut read_query_count = 0_usize;
+    let mut prob_sum = 0.0;
+    let mut num_prob_sum = 0_usize;
+    let mut lowest_prob = 0.0;
     while let Some(Ok(read)) = read_iter.next() {
         let read_id = read.id().to_string();
-        let accession = database.classify_read(read, args.num_queries, true_exponent);
+        let (accession, prob) = database.classify_read(read, args.num_queries, true_exponent);
+        prob_sum += prob;
+        num_prob_sum += 1;
+        if prob < lowest_prob {
+            lowest_prob = prob;
+        }
         match accession {
             None => {
                 println!("{}\t0", read_id);
@@ -72,5 +80,7 @@ fn main() {
             debug!("{} reads processed", read_query_count);
         }
     } // end read iterator
+    info!("lowest prob observed: {}", lowest_prob);
+    info!("Average probability was {}", prob_sum / num_prob_sum as f64);
     info!("Done!")
 } // end main
