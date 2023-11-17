@@ -59,7 +59,7 @@ impl Database<u16> {
         read: Record,
         num_queries: Option<usize>,
         required_probability_exponent: Option<i32>,
-    ) -> Option<&str> {
+    ) -> (Option<&str>, f64) {
         let max_num_queries = match num_queries {
             None => self.max_num_queries,
             Some(n) => n,
@@ -89,7 +89,7 @@ impl Database<u16> {
         index_to_hit_counts: Vec<u64>,
         num_queries: u64,
         required_probability_exponent: Option<i32>,
-    ) -> Option<&str> {
+    ) -> (Option<&str>, f64) {
         let needed_probability = {
             match required_probability_exponent {
                 None => 1e-3,
@@ -106,12 +106,12 @@ impl Database<u16> {
             }
         }
         match best_prob_index {
-            None => None,
+            None => (None, best_prob),
             Some(index) => {
                 if best_prob < needed_probability {
-                    Some(self.get_accession_of_index(index))
+                    (Some(self.get_accession_of_index(index)), best_prob)
                 } else {
-                    None
+                    (None, best_prob)
                 }
             }
         }
