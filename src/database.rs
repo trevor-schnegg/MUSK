@@ -2,11 +2,15 @@ use crate::utility::{reverse_complement, vec_dna_bytes_to_u32};
 use bio::io::fasta::Record;
 use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
-use statrs::distribution::{Binomial, DiscreteCDF};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use log::debug;
+use num_traits::One;
+use statrs::distribution::{Binomial, DiscreteCDF};
+use crate::binomial_sf::sf;
+use crate::my_float::MyFloat;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
@@ -59,7 +63,7 @@ impl Database<u16> {
         read: Record,
         num_queries: Option<usize>,
         required_probability_exponent: Option<i32>,
-    ) -> (Option<&str>, f64) {
+    ) -> (Option<&str>, MyFloat ) {
         let max_num_queries = match num_queries {
             None => self.max_num_queries,
             Some(n) => n,
@@ -89,17 +93,22 @@ impl Database<u16> {
         index_to_hit_counts: Vec<u64>,
         num_queries: u64,
         required_probability_exponent: Option<i32>,
-    ) -> (Option<&str>, f64) {
+    ) -> (Option<&str>, MyFloat) {
         let needed_probability = {
             match required_probability_exponent {
-                None => 1e-3,
-                Some(exp) => 10.0_f64.powi(exp),
+                None => MyFloat::from_f64(1e-3),
+                Some(exp) => MyFloat::from_f64(10.0_f64.powi(exp)),
             }
         };
-        let (mut best_prob, mut best_prob_index) = (1.0, None);
+        let (mut best_prob, mut best_prob_index) = (MyFloat::one(), None);
         for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
             let accession_probability = *self.probabilities.get(accession_index).unwrap();
             let prob = Binomial::new(accession_probability, num_queries).unwrap().sf(num_hits);
+            // if prob <= 0.0 {
+                // debug!("{}\t{}\t{}", accession_probability, num_queries, num_hits);
+            debug!("{:e}\t{:e}", prob, sf(accession_probability, num_queries, num_hits).as_f64());
+            // }
+            let prob = MyFloat::from_f64(prob);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);
