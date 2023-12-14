@@ -6,10 +6,9 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use log::debug;
 use num_traits::One;
-use statrs::distribution::{Binomial, DiscreteCDF};
 use crate::binomial_sf::sf;
+use crate::consts::Consts;
 use crate::my_float::MyFloat;
 
 #[derive(Serialize, Deserialize)]
@@ -63,6 +62,7 @@ impl Database<u16> {
         read: Record,
         num_queries: Option<usize>,
         required_probability_exponent: Option<i32>,
+        consts: &Consts,
     ) -> (Option<&str>, MyFloat ) {
         let max_num_queries = num_queries.unwrap_or_else(|| self.max_num_queries);
         let mut collected_hits = vec![0_u64;self.accessions.len()];
@@ -82,6 +82,7 @@ impl Database<u16> {
             collected_hits,
             num_queries as u64,
             required_probability_exponent,
+            consts
         )
     }
 
@@ -90,6 +91,7 @@ impl Database<u16> {
         index_to_hit_counts: Vec<u64>,
         num_queries: u64,
         required_probability_exponent: Option<i32>,
+        consts: &Consts,
     ) -> (Option<&str>, MyFloat) {
         let needed_probability = {
             match required_probability_exponent {
@@ -100,12 +102,7 @@ impl Database<u16> {
         let (mut best_prob, mut best_prob_index) = (MyFloat::one(), None);
         for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
             let accession_probability = *self.probabilities.get(accession_index).unwrap();
-            let prob = Binomial::new(accession_probability, num_queries).unwrap().sf(num_hits);
-            // if prob <= 0.0 {
-                // debug!("{}\t{}\t{}", accession_probability, num_queries, num_hits);
-            debug!("{:e}\t{:e}", prob, sf(accession_probability, num_queries, num_hits).as_f64());
-            // }
-            let prob = MyFloat::from_f64(prob);
+            let prob = sf(accession_probability, num_queries, num_hits, consts);
             if prob < best_prob {
                 best_prob = prob;
                 best_prob_index = Some(accession_index);

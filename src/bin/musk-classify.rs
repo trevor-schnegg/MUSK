@@ -6,6 +6,7 @@ use musk::utility::get_fasta_iterator_of_file;
 use std::ops::Neg;
 use std::path::Path;
 use num_traits::{One, Zero};
+use musk::consts::Consts;
 use musk::my_float::MyFloat;
 
 /// Converts a fasta file to a database
@@ -61,9 +62,10 @@ fn main() {
     let mut prob_sum = MyFloat::zero();
     let mut num_prob_sum = 0_usize;
     let mut lowest_prob = MyFloat::one();
+    let consts = Consts::new();
     while let Some(Ok(read)) = read_iter.next() {
         let read_id = read.id().to_string();
-        let (accession, prob) = database.classify_read(read, args.num_queries, true_exponent);
+        let (accession, prob) = database.classify_read(read, args.num_queries, true_exponent, &consts);
         if prob < lowest_prob {
             lowest_prob = prob;
         }
