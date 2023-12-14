@@ -64,10 +64,7 @@ impl Database<u16> {
         num_queries: Option<usize>,
         required_probability_exponent: Option<i32>,
     ) -> (Option<&str>, MyFloat ) {
-        let max_num_queries = match num_queries {
-            None => self.max_num_queries,
-            Some(n) => n,
-        };
+        let max_num_queries = num_queries.unwrap_or_else(|| self.max_num_queries);
         let mut collected_hits = vec![0_u64;self.accessions.len()];
         let kmers = read
             .seq()

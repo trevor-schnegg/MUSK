@@ -11,7 +11,7 @@ pub fn integer_decode_f64(f: f64) -> (f32, i32) {
     let bits = f.to_bits();
     let mut exponent = ((bits >> 52) & 0x7ff) as i32;
     let mantissa = f64::from_bits((bits & 0x800fffffffffffff) | 0x3ff0000000000000) as f32;
-    // Exponent bias + mantissa shift
+    // Exponent bias
     exponent -= 1023;
     (mantissa, exponent)
 }

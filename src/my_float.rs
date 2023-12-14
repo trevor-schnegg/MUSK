@@ -1,23 +1,6 @@
 use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
 use num_traits::{One, Zero};
-use crate::decode;
-use crate::decode::integer_decode_f32;
-
-// fn my_exp(base: MyFloat, exp: u32) -> MyFloat {
-//     let mut acc = base;
-//     let mut exp = exp;
-//     while exp > 0 {
-//         if exp % 2 == 0 {
-//             acc *= acc;
-//             exp /= 2;
-//         } else {
-//             acc *= acc * base;
-//             exp -= 1;
-//             exp /= 2;
-//         }
-//     }
-//     acc
-// }
+use crate::decode::{integer_decode_f32, integer_decode_f64};
 
 #[derive(Debug, Clone, Copy, PartialOrd)]
 pub struct MyFloat {
@@ -27,7 +10,7 @@ pub struct MyFloat {
 
 impl MyFloat {
     pub fn from_f32(f: f32) -> Self {
-        let (zeroed_exp_f, exp) = decode::integer_decode_f32(f);
+        let (zeroed_exp_f, exp) = integer_decode_f32(f);
         MyFloat {
             float: zeroed_exp_f,
             exp
@@ -35,11 +18,60 @@ impl MyFloat {
     }
 
     pub fn from_f64(f: f64) -> Self {
-        let (zeroed_exp_f, exp) = decode::integer_decode_f64(f);
+        let (zeroed_exp_f, exp) = integer_decode_f64(f);
         MyFloat {
             float: zeroed_exp_f,
             exp
         }
+    }
+
+    pub fn ln(&self) -> Self {
+        let (zeroed_exp_f, exp) = integer_decode_f32(self.float.ln() + (self.exp as f32 * 2.0_f32.ln()));
+        MyFloat {
+            float: zeroed_exp_f,
+            exp
+        }
+    }
+
+    pub fn exp(&self) -> Self {
+        let base = MyFloat::from_f32(self.float.exp());
+        if self.exp.is_positive() {
+            let mut acc = base;
+            for _ in 0..self.exp {
+                acc = acc.square()
+            }
+            acc
+        } else if self.exp.is_negative() {
+            let mut acc = base;
+            for _ in 0..self.exp.neg() {
+                acc = acc.sqrt()
+            }
+            acc
+        } else {
+            base
+        }
+    }
+
+    pub fn sqrt(&self) -> Self {
+        if self.exp % 2 == 0 {
+            let (zeroed_exp_f, exp) = integer_decode_f32(self.float.sqrt());
+            let exp = (self.exp / 2) + exp;
+            MyFloat {
+                float: zeroed_exp_f,
+                exp
+            }
+        } else {
+            let (zeroed_exp_f, exp) = integer_decode_f32(self.float.sqrt() * 2.0_f32.sqrt());
+            let exp = ((self.exp - 1) / 2) + exp;
+            MyFloat {
+                float: zeroed_exp_f,
+                exp
+            }
+        }
+    }
+
+    pub fn square(&self) -> Self {
+        *self * *self
     }
 
     pub fn as_f64(&self) -> f64 {

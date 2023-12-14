@@ -82,7 +82,7 @@ fn main() {
             debug!("{} reads processed", read_query_count);
         }
     } // end read iterator
-    debug!("average prob was {:?}", prob_sum / MyFloat::new(num_prob_sum as f32));
+    debug!("average prob was {:?}", prob_sum / MyFloat::from_f32(num_prob_sum as f32));
     debug!("lowest observed was {:?}", lowest_prob);
     info!("Done!")
 } // end main
