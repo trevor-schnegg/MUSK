@@ -1,7 +1,7 @@
 use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
-use log::{error, warn};
+use log::warn;
 use statrs::function::beta;
 use std::fs;
 use std::fs::File;
@@ -35,26 +35,16 @@ pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
 
 pub fn convert_to_uppercase(sequence: TextSlice) -> String {
     match std::str::from_utf8(sequence) {
-        Err(error) => {
-            error!(
-                "Unable to convert record sequence to uppercase, \
-                the following error was returned:\n\t{}",
-                error
-            );
-            panic!()
-        }
+        Err(error) => panic!("{}", error),
         Ok(some_str) => some_str.to_uppercase(),
     }
 }
 
 pub fn get_fasta_iterator_of_file(file_path: &Path) -> Records<BufReader<File>> {
-    let returned_reader = match fasta::Reader::from_file(file_path) {
-        Ok(reader) => reader,
-        Err(error) => {
-            panic!("{}", error)
-        }
-    };
-    returned_reader.records()
+    match fasta::Reader::from_file(file_path) {
+        Ok(reader) => reader.records(),
+        Err(error) => panic!("{}", error),
+    }
 }
 
 pub fn reverse_complement(sequence: &[u8]) -> Vec<u8> {
