@@ -5,6 +5,9 @@ use musk::io::load_accession2taxid;
 use musk::utility::get_fasta_iterator_of_file;
 use std::ops::Neg;
 use std::path::Path;
+use num_traits::{One, Zero};
+use musk::consts::Consts;
+use musk::my_float::MyFloat;
 
 /// Converts a fasta file to a database
 #[derive(Parser)]
@@ -56,19 +59,24 @@ fn main() {
     info!("Beginning classification");
     let mut read_iter = get_fasta_iterator_of_file(reads_file);
     let mut read_query_count = 0_usize;
+    let mut prob_sum = MyFloat::zero();
+    let mut num_prob_sum = 0_usize;
+    let mut lowest_prob = MyFloat::one();
+    let consts = Consts::new();
     while let Some(Ok(read)) = read_iter.next() {
         let read_id = read.id().to_string();
-        let accession = database.query_read(read, args.num_queries, true_exponent);
+        let (accession, prob) = database.classify_read(read, args.num_queries, true_exponent, &consts);
+        if prob < lowest_prob {
+            lowest_prob = prob;
+        }
+        prob_sum = prob_sum + prob;
+        num_prob_sum += 1;
         match accession {
             None => {
                 println!("{}\t0", read_id);
             }
             Some(accession) => {
-                println!(
-                    "{}\t{}",
-                    read_id,
-                    accession2taxid.get(accession).unwrap()
-                );
+                println!("{}\t{}", read_id, accession2taxid.get(accession).unwrap());
             }
         }
         read_query_count += 1;
@@ -76,5 +84,7 @@ fn main() {
             debug!("{} reads processed", read_query_count);
         }
     } // end read iterator
+    debug!("average prob was {:?}", prob_sum / MyFloat::from_f32(num_prob_sum as f32));
+    debug!("lowest observed was {:?}", lowest_prob);
     info!("Done!")
 } // end main

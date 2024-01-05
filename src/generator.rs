@@ -17,7 +17,7 @@ fn u8_to_base(n: u8) -> char {
 
 pub fn create_random_read(len: usize) -> String {
     let rng = thread_rng();
-    let range = Uniform::from(0..3);
+    let range = Uniform::from(0..4);
     rng.sample_iter(&range)
         .take(len)
         .map(|n| u8_to_base(n))

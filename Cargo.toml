@@ -16,3 +16,4 @@ serde = {version = "*", features = ["derive"]}
 num-traits = "*"
 rand = "*"
 bit-iter = "*"
+approx = "*"
