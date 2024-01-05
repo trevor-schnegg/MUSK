@@ -2,18 +2,19 @@ use crate::utility::{reverse_complement, vec_dna_bytes_to_u32};
 use bio::io::fasta::Record;
 use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
-use statrs::distribution::{Binomial, DiscreteCDF};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use crate::hit_counter::HitCounter;
-use crate::generator::create_random_read;
+use num_traits::{One, Zero};
+use statrs::distribution::{Binomial, DiscreteCDF};
+use crate::binomial_sf::sf;
+use crate::consts::Consts;
+use crate::my_float::MyFloat;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
-    start_probabilities: Vec<f64>,
-    extend_probabilities: Option<Vec<f64>>,
+    probabilities: Vec<f64>,
     kmer_len: usize,
     accessions: Vec<String>,
     kmer2occ: Vec<T>,
@@ -24,8 +25,7 @@ pub struct Database<T> {
 impl Database<u16> {
     pub fn new(kmer_len: usize, num_queries: usize) -> Self {
         Database {
-            start_probabilities: Vec::new(),
-            extend_probabilities: None,
+            probabilities: Vec::new(),
             accessions: Vec::new(),
             kmer_len,
             kmer2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
@@ -54,7 +54,7 @@ impl Database<u16> {
 
         self.insert_kmers(record_kmer_set, accession_index);
 
-        self.start_probabilities
+        self.probabilities
             .push(insert_count as f64 / self.num_kmers as f64);
     }
 
@@ -63,11 +63,10 @@ impl Database<u16> {
         read: Record,
         num_queries: Option<usize>,
         required_probability_exponent: Option<i32>,
-    ) -> (Option<&str>, f64) {
-        let max_num_queries = match num_queries {
-            None => self.max_num_queries,
-            Some(n) => n,
-        };
+        consts: &Consts,
+    ) -> (Option<&str>, MyFloat ) {
+        let max_num_queries = num_queries.unwrap_or_else(|| self.max_num_queries);
+        let mut collected_hits = vec![0_u64;self.accessions.len()];
         let kmers = read
             .seq()
             .windows(self.kmer_len)
@@ -75,146 +74,40 @@ impl Database<u16> {
             .take(max_num_queries)
             .collect::<Vec<u32>>();
         let num_queries = kmers.len();
+        for kmer in kmers {
+            for bit_index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
+                *collected_hits.get_mut(bit_index).unwrap() += 1;
+            }
+        }
         self.classify_hits(
-            self.collect_hits(kmers),
+            collected_hits,
             num_queries as u64,
             required_probability_exponent,
+            consts
         )
-    }
-
-    pub fn update_probabilities_empirically(&mut self, read_len: usize) -> () {
-        let random_read = create_random_read(read_len);
-        let kmers = random_read
-            .as_bytes()
-            .windows(self.kmer_len)
-            .map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes).unwrap())
-            .collect::<Vec<u32>>();
-        let mut index_to_hit_counts = vec![HitCounter::new();9];
-        for kmer in kmers.into_iter() {
-            let set_bits = {
-                let mut set = HashSet::new();
-                for bit in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
-                    set.insert(bit);
-                }
-                set
-            };
-            for i in 0_usize..9_usize {
-                if set_bits.contains(&i) {
-                    index_to_hit_counts.get_mut(i).unwrap().hit();
-                } else {
-                    index_to_hit_counts.get_mut(i).unwrap().miss();
-                }
-            }
-        }
-        for (index, (m2m, m2nm, nm2m, nm2nm)) in index_to_hit_counts.into_iter().map(|x| x.get_counts()).enumerate() {
-            println!("match2match: {}, match2nonmatch: {}, nonmatch2match: {}, nonmatch2nonmatch: {}", m2m, m2nm, nm2m, nm2nm);
-            let (orig_start_prob, orig_extend_prob) = self.get_probs_of_index(index);
-            let observed_start_prob = nm2m as f64 / (nm2m + nm2nm) as f64;
-            let observed_extend_prob = m2m as f64 / (m2m + m2nm) as f64;
-            println!("start probability was originally: {}, observed start probability was: {}", orig_start_prob, observed_start_prob);
-            println!("extend probability was originally: {:?}, observed extend probability was: {}\n", orig_extend_prob, observed_extend_prob);
-            *self.start_probabilities.get_mut(index).unwrap() = observed_start_prob;
-            match &mut self.extend_probabilities {
-                Some(vec) => {
-                    *vec.get_mut(index).unwrap() = observed_extend_prob;
-                },
-                none=> {
-                    *none = Some(vec![0.25; self.start_probabilities.len()]);
-                    *none.as_mut().unwrap().get_mut(index).unwrap() = observed_extend_prob;
-                }
-            }
-        }
-    }
-
-    pub fn random_read_test(&self, read_len: usize) -> () {
-        let random_read = create_random_read(read_len);
-        let kmers = random_read
-            .as_bytes()
-            .windows(self.kmer_len)
-            .map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes).unwrap())
-            .collect::<Vec<u32>>();
-        let total_kmers = kmers.len() as f64;
-        let mut hit_counter = vec![0_usize;9];
-        for kmer in kmers {
-            for bit in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
-                *hit_counter.get_mut(bit).unwrap() += 1;
-            }
-        }
-        println!("{:?}", hit_counter.into_iter().map(|x| x as f64 / total_kmers).collect::<Vec<f64>>());
-    }
-
-    pub fn random_kmer_test(&self, num_kmers: usize) -> () {
-        let mut hit_counts = vec![0_usize;9];
-        let mut curr_num = 0_usize;
-        while curr_num < num_kmers {
-            let kmer = vec_dna_bytes_to_u32(create_random_read(self.kmer_len).as_bytes()).unwrap();
-            for bit_index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
-                *hit_counts.get_mut(bit_index).unwrap() += 1;
-            }
-            curr_num += 1;
-        }
-        println!("{:?}", hit_counts.into_iter().map(|x| x as f64 / curr_num as f64).collect::<Vec<f64>>())
-    }
-
-    pub fn expected_hit_percentages(&self) -> Vec<f64> {
-        let mut collection = Vec::new();
-        for i in 0_usize..self.accessions.len() {
-            collection.push(*self.start_probabilities.get(i).unwrap())
-        }
-        collection
-    }
-
-    fn collect_hits(&self, kmers: Vec<u32>) -> HashMap<usize, (u64, u64, usize)> {
-        let mut index_to_hit_counts = HashMap::new();
-        let mut kmer_iter = kmers.into_iter().enumerate();
-        while let Some((idx, kmer)) = kmer_iter.next() {
-            for index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
-                match index_to_hit_counts.get_mut(&index) {
-                    None => {
-                        index_to_hit_counts.insert(index, (1_u64, 0_u64, idx));
-                    }
-                    Some(counts) => {
-                        if counts.2 == idx - 1 {
-                            counts.1 += 1;
-                        } else {
-                            counts.0 += 1;
-                        }
-                        counts.2 = idx;
-                    }
-                }
-            }
-        }
-        index_to_hit_counts
     }
 
     fn classify_hits(
         &self,
-        index_to_hit_counts: HashMap<usize, (u64, u64, usize)>,
+        index_to_hit_counts: Vec<u64>,
         num_queries: u64,
         required_probability_exponent: Option<i32>,
-    ) -> (Option<&str>, f64) {
+        consts: &Consts,
+    ) -> (Option<&str>, MyFloat) {
         let needed_probability = {
             match required_probability_exponent {
-                None => 1e-3,
-                Some(exp) => 10.0_f64.powi(exp),
+                None => MyFloat::from_f64(1e-3),
+                Some(exp) => MyFloat::from_f64(10.0_f64.powi(exp)),
             }
         };
-        let (mut best_prob, mut best_prob_index) = (1.0, None);
-        for (accession_index, (num_starts, num_extends, _)) in index_to_hit_counts {
-            let (open_prob, extend_prob) = self.get_probs_of_index(accession_index);
-            let extend_prob = match extend_prob {
-                None => 0.25,
-                Some(prob) => prob,
-            };
-            let prob = {
-                let prob_starts =
-                    Binomial::new(open_prob, num_queries - (num_extends + num_starts))
-                        .unwrap()
-                        .sf(num_starts);
-                let prob_extends = Binomial::new(extend_prob, num_extends + num_starts)
-                    .unwrap()
-                    .sf(num_extends);
-                prob_starts * prob_extends
+        let (mut best_prob, mut best_prob_index) = (MyFloat::one(), None);
+        for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
+            let accession_probability = *self.probabilities.get(accession_index).unwrap();
+            let prob_f64 = Binomial::new(accession_probability, num_queries).unwrap().sf(num_hits);
+            let prob = if prob_f64.is_zero() {
+                sf(accession_probability, num_queries, num_hits, consts)
+            } else {
+                MyFloat::from_f64(prob_f64)
             };
             if prob < best_prob {
                 best_prob = prob;
@@ -258,18 +151,6 @@ impl Database<u16> {
         for kmer in kmers {
             *self.kmer2occ.get_mut(kmer as usize).unwrap() |= bit_to_set
         }
-    }
-
-    fn get_probs_of_index(&self, accession_index: usize) -> (f64, Option<f64>) {
-        let open_prob = *self
-            .start_probabilities
-            .get(accession_index)
-            .unwrap();
-        let extend_prob = match &self.extend_probabilities {
-            None => None,
-            Some(map) => Some(*map.get(accession_index).unwrap()),
-        };
-        (open_prob, extend_prob)
     }
 
     fn get_accession_of_index(&self, accession_index: usize) -> &str {
