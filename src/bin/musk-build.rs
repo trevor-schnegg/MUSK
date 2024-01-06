@@ -15,10 +15,6 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
-    #[arg(short, long, default_value_t = 180)]
-    /// Length of k-mer to use in the database
-    num_queries: usize,
-
     #[arg()]
     /// Location to store the resulting index
     index_out: String,
@@ -41,7 +37,7 @@ fn main() {
     let reference_loc = Path::new(&args.reference_loc);
 
     // Create database variable
-    let mut database = Database::new(args.kmer_length, args.num_queries);
+    let mut database = Database::new(args.kmer_length);
 
     // Create database
     info!("Creating database");

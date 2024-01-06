@@ -1,8 +1,7 @@
 use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
-use log::warn;
-use statrs::function::beta;
+use log::{error, warn};
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
@@ -11,26 +10,30 @@ use std::path::Path;
 pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
     let dir_content =
         fs::read_dir(reference_loc).expect("could not read provided reference directory");
-    let fasta_files = dir_content
-        .filter_map(|x| {
-            match x {
-                Ok(entry) => {
-                    if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna") {
-                        Some(entry.path().to_str().unwrap().to_string())
-                    } else {
-                        warn!("Found directory entry '{:?}' that did not end with '.fna'. Make sure this is intentional.", entry);
-                        None
-                    }
-                },
-                Err(e) => {
-                    warn!("Error found while reading contents of directory {:?}", reference_loc);
-                    warn!("{}", e);
+    dir_content
+        .filter_map(|dir_entry| match dir_entry {
+            Ok(entry) => {
+                if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna") {
+                    Some(entry.path().to_str().unwrap().to_string())
+                } else {
+                    warn!(
+                        "Found directory entry '{:?}' that did not end with '.fna'. Skipping...",
+                        entry
+                    );
                     None
                 }
             }
+            Err(e) => {
+                warn!(
+                    "Error found while reading entry of reference directory {:?}",
+                    reference_loc
+                );
+                error!("{}", e);
+                warn!("Skipping the entry because of the above error");
+                None
+            }
         })
-        .collect::<Vec<String>>();
-    fasta_files
+        .collect::<Vec<String>>()
 }
 
 pub fn convert_to_uppercase(sequence: TextSlice) -> String {
@@ -67,32 +70,35 @@ pub fn reverse_complement(sequence: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-pub fn sf(n: u64, p: f64, x: u64) -> f64 {
-    if x >= n {
-        1.0
+pub fn two_bit_dna_representation(c: &u8) -> Option<usize> {
+    if *c == b'A' || *c == b'a' {
+        // binary is 00
+        Some(0)
+    } else if *c == b'C' || *c == b'c' {
+        // binary is 01
+        Some(1)
+    } else if *c == b'G' || *c == b'g' {
+        // binary is 10
+        Some(2)
+    } else if *c == b'T' || *c == b't' {
+        // binary is 11
+        Some(3)
     } else {
-        let k = x;
-        beta::beta_reg(k as f64 + 1.0, (n - k) as f64, p)
+        return None;
     }
 }
 
-pub fn vec_dna_bytes_to_u32(kmer: &[u8]) -> Option<u32> {
-    let mut num = 0_u32;
-    for (base_position, n) in kmer.iter().rev().enumerate() {
-        if *n == b'A' || *n == b'a' {
-            // binary is 00, don't need to change anything
-            continue;
-        } else if *n == b'C' || *n == b'c' {
-            // binary is 01
-            num |= 1_u32 << (base_position << 1)
-        } else if *n == b'G' || *n == b'g' {
-            // binary is 10
-            num |= 2_u32 << (base_position << 1)
-        } else if *n == b'T' || *n == b't' {
-            // binary is 11
-            num |= 3_u32 << (base_position << 1)
-        } else {
-            return None;
+pub fn compressed_representation(kmer: &[u8]) -> Option<usize> {
+    let mut num = 0_usize;
+    for c in kmer.iter() {
+        num <<= 2;
+        match two_bit_dna_representation(c) {
+            None => {
+                return None;
+            }
+            Some(n) => {
+                num |= n;
+            }
         }
     }
     Some(num)

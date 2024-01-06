@@ -1,11 +1,9 @@
+pub mod big_exp_float;
+pub mod binomial_sf;
+pub mod consts;
 pub mod database;
+pub mod decode;
 pub mod generator;
 pub mod io;
+pub mod kmer_iter;
 pub mod utility;
-pub mod binomial_sf;
-pub mod my_float;
-pub mod decode;
-pub mod consts;
-
-#[cfg(test)]
-mod tests;

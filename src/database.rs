@@ -1,16 +1,17 @@
-use crate::utility::{reverse_complement, vec_dna_bytes_to_u32};
+use crate::big_exp_float::BigExpFloat;
+use crate::binomial_sf::sf;
+use crate::consts::Consts;
+use crate::kmer_iter::KmerIter;
+use crate::utility::reverse_complement;
 use bio::io::fasta::Record;
 use bit_iter::BitIter;
+use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
+use statrs::distribution::{Binomial, DiscreteCDF};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use num_traits::{One, Zero};
-use statrs::distribution::{Binomial, DiscreteCDF};
-use crate::binomial_sf::sf;
-use crate::consts::Consts;
-use crate::my_float::MyFloat;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database<T> {
@@ -18,19 +19,19 @@ pub struct Database<T> {
     kmer_len: usize,
     accessions: Vec<String>,
     kmer2occ: Vec<T>,
-    num_kmers: u64,
-    max_num_queries: usize,
+    num_kmers: usize,
+    consts: Consts,
 }
 
 impl Database<u16> {
-    pub fn new(kmer_len: usize, num_queries: usize) -> Self {
+    pub fn new(kmer_len: usize) -> Self {
         Database {
             probabilities: Vec::new(),
             accessions: Vec::new(),
             kmer_len,
             kmer2occ: vec![0_u16; 4_usize.pow(kmer_len as u32)],
-            num_kmers: 4_usize.pow(kmer_len as u32) as u64,
-            max_num_queries: num_queries,
+            num_kmers: 4_usize.pow(kmer_len as u32),
+            consts: Consts::new(),
         }
     }
 
@@ -49,10 +50,13 @@ impl Database<u16> {
         let accession_index = self.accessions.len();
         self.accessions.push(record.id().to_string());
 
-        let record_kmer_set = self.get_kmers_as_u32(record.seq(), true);
-        let insert_count = record_kmer_set.len();
+        let reverse_compliment = reverse_complement(record.seq());
+        let all_kmers = KmerIter::from(record.seq(), self.kmer_len)
+            .chain(KmerIter::from(&reverse_compliment, self.kmer_len));
+        let kmer_set = HashSet::from_iter(all_kmers);
+        let insert_count = kmer_set.len();
 
-        self.insert_kmers(record_kmer_set, accession_index);
+        self.insert_kmers(kmer_set, accession_index);
 
         self.probabilities
             .push(insert_count as f64 / self.num_kmers as f64);
@@ -61,53 +65,38 @@ impl Database<u16> {
     pub fn classify_read(
         &self,
         read: Record,
-        num_queries: Option<usize>,
-        required_probability_exponent: Option<i32>,
-        consts: &Consts,
-    ) -> (Option<&str>, MyFloat ) {
-        let max_num_queries = num_queries.unwrap_or_else(|| self.max_num_queries);
-        let mut collected_hits = vec![0_u64;self.accessions.len()];
-        let kmers = read
-            .seq()
-            .windows(self.kmer_len)
-            .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes))
-            .take(max_num_queries)
-            .collect::<Vec<u32>>();
+        num_queries: usize,
+        required_prob: BigExpFloat,
+    ) -> (Option<&str>, BigExpFloat) {
+        let mut collected_hits = vec![0_u64; self.accessions.len()];
+        let kmers = KmerIter::from(read.seq(), self.kmer_len)
+            .take(num_queries)
+            .collect::<Vec<usize>>();
         let num_queries = kmers.len();
         for kmer in kmers {
-            for bit_index in BitIter::from(*self.kmer2occ.get(kmer as usize).unwrap()) {
+            for bit_index in BitIter::from(*self.kmer2occ.get(kmer).unwrap()) {
                 *collected_hits.get_mut(bit_index).unwrap() += 1;
             }
         }
-        self.classify_hits(
-            collected_hits,
-            num_queries as u64,
-            required_probability_exponent,
-            consts
-        )
+        self.classify_hits(collected_hits, num_queries as u64, required_prob)
     }
 
     fn classify_hits(
         &self,
         index_to_hit_counts: Vec<u64>,
         num_queries: u64,
-        required_probability_exponent: Option<i32>,
-        consts: &Consts,
-    ) -> (Option<&str>, MyFloat) {
-        let needed_probability = {
-            match required_probability_exponent {
-                None => MyFloat::from_f64(1e-3),
-                Some(exp) => MyFloat::from_f64(10.0_f64.powi(exp)),
-            }
-        };
-        let (mut best_prob, mut best_prob_index) = (MyFloat::one(), None);
+        required_prob: BigExpFloat,
+    ) -> (Option<&str>, BigExpFloat) {
+        let (mut best_prob, mut best_prob_index) = (BigExpFloat::one(), None);
         for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
             let accession_probability = *self.probabilities.get(accession_index).unwrap();
-            let prob_f64 = Binomial::new(accession_probability, num_queries).unwrap().sf(num_hits);
+            let prob_f64 = Binomial::new(accession_probability, num_queries)
+                .unwrap()
+                .sf(num_hits);
             let prob = if prob_f64.is_zero() {
-                sf(accession_probability, num_queries, num_hits, consts)
+                sf(accession_probability, num_queries, num_hits, &self.consts)
             } else {
-                MyFloat::from_f64(prob_f64)
+                BigExpFloat::from_f64(prob_f64)
             };
             if prob < best_prob {
                 best_prob = prob;
@@ -117,7 +106,7 @@ impl Database<u16> {
         match best_prob_index {
             None => (None, best_prob),
             Some(index) => {
-                if best_prob < needed_probability {
+                if best_prob < required_prob {
                     (Some(self.get_accession_of_index(index)), best_prob)
                 } else {
                     (None, best_prob)
@@ -126,30 +115,10 @@ impl Database<u16> {
         }
     }
 
-    fn get_kmers_as_u32(&self, sequence: &[u8], do_reverse_compliment: bool) -> HashSet<u32> {
-        let mut kmer_set = HashSet::new();
-        for kmer in sequence
-            .windows(self.kmer_len)
-            .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes))
-        {
-            kmer_set.insert(kmer);
-        }
-        if do_reverse_compliment {
-            let reverse_compliment = reverse_complement(sequence);
-            for kmer in reverse_compliment
-                .windows(self.kmer_len)
-                .filter_map(|kmer_bytes| vec_dna_bytes_to_u32(kmer_bytes))
-            {
-                kmer_set.insert(kmer);
-            }
-        }
-        kmer_set
-    }
-
-    fn insert_kmers(&mut self, kmers: HashSet<u32>, accession_index: usize) -> () {
+    fn insert_kmers(&mut self, kmers: HashSet<usize>, accession_index: usize) -> () {
         let bit_to_set = 1_u16 << accession_index;
         for kmer in kmers {
-            *self.kmer2occ.get_mut(kmer as usize).unwrap() |= bit_to_set
+            *self.kmer2occ.get_mut(kmer).unwrap() |= bit_to_set
         }
     }
 

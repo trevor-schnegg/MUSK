@@ -1,40 +1,41 @@
-use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
+use crate::decode::{decode_f32, decode_f64};
 use num_traits::{One, Zero};
-use crate::decode::{integer_decode_f32, integer_decode_f64};
+use serde::{Deserialize, Serialize};
+use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
 
-#[derive(Debug, Clone, Copy, PartialOrd)]
-pub struct MyFloat {
+#[derive(Debug, Clone, Copy, PartialOrd, Serialize, Deserialize)]
+pub struct BigExpFloat {
     exp: i32,
     float: f32,
 }
 
-impl MyFloat {
+impl BigExpFloat {
     pub fn from_f32(f: f32) -> Self {
-        let (zeroed_exp_f, exp) = integer_decode_f32(f);
-        MyFloat {
+        let (zeroed_exp_f, exp) = decode_f32(f);
+        BigExpFloat {
             float: zeroed_exp_f,
-            exp
+            exp,
         }
     }
 
     pub fn from_f64(f: f64) -> Self {
-        let (zeroed_exp_f, exp) = integer_decode_f64(f);
-        MyFloat {
+        let (zeroed_exp_f, exp) = decode_f64(f);
+        BigExpFloat {
             float: zeroed_exp_f,
-            exp
+            exp,
         }
     }
 
     pub fn ln(&self) -> Self {
-        let (zeroed_exp_f, exp) = integer_decode_f32(self.float.ln() + (self.exp as f32 * 2.0_f32.ln()));
-        MyFloat {
+        let (zeroed_exp_f, exp) = decode_f32(self.float.ln() + (self.exp as f32 * 2.0_f32.ln()));
+        BigExpFloat {
             float: zeroed_exp_f,
-            exp
+            exp,
         }
     }
 
     pub fn exp(&self) -> Self {
-        let base = MyFloat::from_f32(self.float.exp());
+        let base = BigExpFloat::from_f32(self.float.exp());
         if self.exp.is_positive() {
             let mut acc = base;
             for _ in 0..self.exp {
@@ -54,18 +55,18 @@ impl MyFloat {
 
     pub fn sqrt(&self) -> Self {
         if self.exp % 2 == 0 {
-            let (zeroed_exp_f, exp) = integer_decode_f32(self.float.sqrt());
+            let (zeroed_exp_f, exp) = decode_f32(self.float.sqrt());
             let exp = (self.exp / 2) + exp;
-            MyFloat {
+            BigExpFloat {
                 float: zeroed_exp_f,
-                exp
+                exp,
             }
         } else {
-            let (zeroed_exp_f, exp) = integer_decode_f32(self.float.sqrt() * 2.0_f32.sqrt());
+            let (zeroed_exp_f, exp) = decode_f32(self.float.sqrt() * 2.0_f32.sqrt());
             let exp = ((self.exp - 1) / 2) + exp;
-            MyFloat {
+            BigExpFloat {
                 float: zeroed_exp_f,
-                exp
+                exp,
             }
         }
     }
@@ -79,49 +80,49 @@ impl MyFloat {
     }
 }
 
-impl Mul for MyFloat {
-    type Output = MyFloat;
+impl Mul for BigExpFloat {
+    type Output = BigExpFloat;
 
     fn mul(self, rhs: Self) -> Self::Output {
         let res = self.float * rhs.float;
-        let (zeroed_exp_f, exp) = integer_decode_f32(res);
-        MyFloat {
+        let (zeroed_exp_f, exp) = decode_f32(res);
+        BigExpFloat {
             float: zeroed_exp_f,
             exp: self.exp + rhs.exp + exp,
         }
     }
 }
 
-impl MulAssign for MyFloat {
+impl MulAssign for BigExpFloat {
     fn mul_assign(&mut self, rhs: Self) {
         let res = self.float * rhs.float;
-        let (zeroed_exp_f, exp) = integer_decode_f32(res);
+        let (zeroed_exp_f, exp) = decode_f32(res);
         self.float = zeroed_exp_f;
         self.exp += rhs.exp + exp;
     }
 }
 
-impl Div for MyFloat {
-    type Output = MyFloat;
+impl Div for BigExpFloat {
+    type Output = BigExpFloat;
 
     fn div(self, rhs: Self) -> Self::Output {
         let res = self.float / rhs.float;
-        let (zeroed_exp_f, exp) = integer_decode_f32(res);
-        MyFloat {
+        let (zeroed_exp_f, exp) = decode_f32(res);
+        BigExpFloat {
             float: zeroed_exp_f,
             exp: self.exp - rhs.exp + exp,
         }
     }
 }
 
-impl Add for MyFloat {
-    type Output = MyFloat;
+impl Add for BigExpFloat {
+    type Output = BigExpFloat;
 
     fn add(self, rhs: Self) -> Self::Output {
         if self.exp == rhs.exp {
             let res = self.float + rhs.float;
-            let (zeroed_exp_f, exp) = integer_decode_f32(res);
-            MyFloat {
+            let (zeroed_exp_f, exp) = decode_f32(res);
+            BigExpFloat {
                 float: zeroed_exp_f,
                 exp: self.exp + exp,
             }
@@ -130,32 +131,32 @@ impl Add for MyFloat {
             let left_minus_right = self.exp - rhs.exp;
             if left_minus_right > 0 {
                 let res = self.float + (rhs.float * 2.0_f32.powi(left_minus_right.neg()));
-                let (zeroed_exp_f, exp) = integer_decode_f32(res);
-                MyFloat {
+                let (zeroed_exp_f, exp) = decode_f32(res);
+                BigExpFloat {
                     float: zeroed_exp_f,
                     exp: self.exp + exp,
                 }
-            } else { // If left_minus_right < 0
+            } else {
+                // If left_minus_right < 0
                 let res = (self.float * 2.0_f32.powi(left_minus_right)) + rhs.float;
-                let (zeroed_exp_f, exp) = integer_decode_f32(res);
-                MyFloat {
+                let (zeroed_exp_f, exp) = decode_f32(res);
+                BigExpFloat {
                     float: zeroed_exp_f,
                     exp: rhs.exp + exp,
                 }
-
             }
         }
     }
 }
 
-impl Sub for MyFloat {
-    type Output = MyFloat;
+impl Sub for BigExpFloat {
+    type Output = BigExpFloat;
 
     fn sub(self, rhs: Self) -> Self::Output {
         if self.exp == rhs.exp {
             let res = self.float - rhs.float;
-            let (zeroed_exp_f, exp) = integer_decode_f32(res);
-            MyFloat {
+            let (zeroed_exp_f, exp) = decode_f32(res);
+            BigExpFloat {
                 float: zeroed_exp_f,
                 exp: self.exp + exp,
             }
@@ -164,15 +165,16 @@ impl Sub for MyFloat {
             let left_minus_right = self.exp - rhs.exp;
             if left_minus_right > 0 {
                 let res = self.float - (rhs.float * 2.0_f32.powi(left_minus_right.neg()));
-                let (zeroed_exp_f, exp) = integer_decode_f32(res);
-                MyFloat {
+                let (zeroed_exp_f, exp) = decode_f32(res);
+                BigExpFloat {
                     float: zeroed_exp_f,
                     exp: self.exp + exp,
                 }
-            } else { // If left_minus_right < 0
+            } else {
+                // If left_minus_right < 0
                 let res = (self.float * 2.0_f32.powi(left_minus_right)) - rhs.float;
-                let (zeroed_exp_f, exp) = integer_decode_f32(res);
-                MyFloat {
+                let (zeroed_exp_f, exp) = decode_f32(res);
+                BigExpFloat {
                     float: zeroed_exp_f,
                     exp: rhs.exp + exp,
                 }
@@ -181,26 +183,26 @@ impl Sub for MyFloat {
     }
 }
 
-impl Neg for MyFloat {
-    type Output = MyFloat;
+impl Neg for BigExpFloat {
+    type Output = BigExpFloat;
 
     fn neg(self) -> Self::Output {
-        MyFloat {
+        BigExpFloat {
             exp: self.exp,
             float: self.float.neg(),
         }
     }
 }
 
-impl One for MyFloat {
+impl One for BigExpFloat {
     fn one() -> Self {
-        MyFloat::from_f32(1.0)
+        BigExpFloat::from_f32(1.0)
     }
 }
 
-impl Zero for MyFloat {
+impl Zero for BigExpFloat {
     fn zero() -> Self {
-        MyFloat::from_f32(0.0)
+        BigExpFloat::from_f32(0.0)
     }
 
     fn is_zero(&self) -> bool {
@@ -212,7 +214,7 @@ impl Zero for MyFloat {
     }
 }
 
-impl PartialEq<Self> for MyFloat {
+impl PartialEq<Self> for BigExpFloat {
     fn eq(&self, other: &Self) -> bool {
         if self.float == other.float && self.exp == other.exp {
             true
