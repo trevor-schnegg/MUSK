@@ -2,6 +2,10 @@ use crate::decode::{decode_f32, decode_f64};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
+use std::f32::consts::LN_2;
+
+const ONE: BigExpFloat = BigExpFloat {exp: 0, float: 1.0};
+const ZERO: BigExpFloat = BigExpFloat {exp: 0, float: 0.0};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Serialize, Deserialize)]
 pub struct BigExpFloat {
@@ -27,7 +31,7 @@ impl BigExpFloat {
     }
 
     pub fn ln(&self) -> Self {
-        let (zeroed_exp_f, exp) = decode_f32(self.float.ln() + (self.exp as f32 * 2.0_f32.ln()));
+        let (zeroed_exp_f, exp) = decode_f32(self.float.ln() + (self.exp as f32 * LN_2));
         BigExpFloat {
             float: zeroed_exp_f,
             exp,
@@ -196,17 +200,17 @@ impl Neg for BigExpFloat {
 
 impl One for BigExpFloat {
     fn one() -> Self {
-        BigExpFloat::from_f32(1.0)
+        ONE
     }
 }
 
 impl Zero for BigExpFloat {
     fn zero() -> Self {
-        BigExpFloat::from_f32(0.0)
+        ZERO
     }
 
     fn is_zero(&self) -> bool {
-        if self.exp == 0 && self.float == 0.0 {
+        if self.exp == 0 && self.float.is_zero() {
             true
         } else {
             false

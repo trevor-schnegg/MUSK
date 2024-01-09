@@ -90,6 +90,9 @@ impl Database<u16> {
         let (mut best_prob, mut best_prob_index) = (BigExpFloat::one(), None);
         for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
             let accession_probability = *self.probabilities.get(accession_index).unwrap();
+            if (num_hits as f64) < (accession_probability * num_queries as f64) {
+                continue;
+            }
             let prob_f64 = Binomial::new(accession_probability, num_queries)
                 .unwrap()
                 .sf(num_hits);

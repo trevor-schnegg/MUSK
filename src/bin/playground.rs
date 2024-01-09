@@ -6,4 +6,5 @@ fn main() {
     while let Some(kmer) = seq_iter.next() {
         println!("{:016b}", kmer);
     }
+    println!("{}", 1_u16);
 }

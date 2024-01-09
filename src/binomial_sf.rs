@@ -24,7 +24,7 @@ fn checked_beta_reg(a: f64, b: f64, x: f64, consts: &Consts) -> Result<BigExpFlo
         let bt = if x.is_zero() || ulps_eq!(x, 1.0) {
             BigExpFloat::zero()
         } else {
-            (ln_gamma(a + b, &consts) - ln_gamma(a, &consts) - ln_gamma(b, &consts)
+            (ln_gamma(a + b, consts) - ln_gamma(a, consts) - ln_gamma(b, consts)
                 + BigExpFloat::from_f64(a * x.ln())
                 + BigExpFloat::from_f64(b * (1.0 - x).ln()))
             .exp()
@@ -51,7 +51,7 @@ fn checked_beta_reg(a: f64, b: f64, x: f64, consts: &Consts) -> Result<BigExpFlo
         let mut h = d;
 
         for m in 1..141 {
-            let m = BigExpFloat::from_f64(m as f64);
+            let m = BigExpFloat::from_f32(m as f32);
             let m2 = m * BigExpFloat::from_f64(2.0);
             let mut aa = m * (b - m) * x / ((qam + m2) * (a + m2));
             d = BigExpFloat::one() + aa * d;
