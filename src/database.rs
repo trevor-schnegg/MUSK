@@ -50,9 +50,7 @@ impl Database<u16> {
         let accession_index = self.accessions.len();
         self.accessions.push(record.id().to_string());
 
-        let reverse_compliment = reverse_complement(record.seq());
-        let all_kmers = KmerIter::from(record.seq(), self.kmer_len)
-            .chain(KmerIter::from(&reverse_compliment, self.kmer_len));
+        let all_kmers = KmerIter::from(record.seq(), self.kmer_len);
         let kmer_set = HashSet::from_iter(all_kmers);
         let insert_count = kmer_set.len();
 
@@ -66,28 +64,45 @@ impl Database<u16> {
         &self,
         read: Record,
         num_queries: usize,
-        required_prob: BigExpFloat,
-    ) -> (Option<&str>, BigExpFloat) {
-        let mut collected_hits = vec![0_u64; self.accessions.len()];
-        let kmers = KmerIter::from(read.seq(), self.kmer_len)
+    ) -> Option<(BigExpFloat, &str)> {
+        let f_kmers = KmerIter::from(read.seq(), self.kmer_len)
             .take(num_queries)
             .collect::<Vec<usize>>();
-        let num_queries = kmers.len();
-        for kmer in kmers {
-            for bit_index in BitIter::from(*self.kmer2occ.get(kmer).unwrap()) {
-                *collected_hits.get_mut(bit_index).unwrap() += 1;
+        let num_queries = f_kmers.len();
+        let rc = reverse_complement(read.seq());
+        let rc_kmers = KmerIter::from(&rc, self.kmer_len)
+            .take(num_queries)
+            .collect::<Vec<usize>>();
+        assert_eq!(f_kmers.len(), rc_kmers.len());
+
+        let mut f_hits = vec![0_u64; self.accessions.len()];
+        let mut rc_hits = vec![0_u64; self.accessions.len()];
+        for (f_kmer, rc_kmer) in f_kmers.into_iter().zip(rc_kmers) {
+            for bit_index in BitIter::from(*self.kmer2occ.get(f_kmer).unwrap()) {
+                *f_hits.get_mut(bit_index).unwrap() += 1;
+            }
+            for bit_index in BitIter::from(*self.kmer2occ.get(rc_kmer).unwrap()) {
+                *rc_hits.get_mut(bit_index).unwrap() += 1;
             }
         }
-        self.classify_hits(collected_hits, num_queries as u64, required_prob)
+        match (self.get_lowest_probability(f_hits, num_queries as u64), self.get_lowest_probability(rc_hits, num_queries as u64)) {
+            (Some(t1), Some(t2)) => {
+                if t1.0 < t2.0 {
+                    Some(t1)
+                } else {
+                    Some(t2)
+                }
+            },
+            _ => None
+        }
     }
 
-    fn classify_hits(
+    fn get_lowest_probability(
         &self,
         index_to_hit_counts: Vec<u64>,
         num_queries: u64,
-        required_prob: BigExpFloat,
-    ) -> (Option<&str>, BigExpFloat) {
-        let (mut best_prob, mut best_prob_index) = (BigExpFloat::one(), None);
+    ) -> Option<(BigExpFloat, &str)> {
+        let (mut lowest_prob, mut best_prob_index) = (BigExpFloat::one(), None);
         for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
             let accession_probability = *self.probabilities.get(accession_index).unwrap();
             if (num_hits as f64) < (accession_probability * num_queries as f64) {
@@ -101,20 +116,14 @@ impl Database<u16> {
             } else {
                 BigExpFloat::from_f64(prob_f64)
             };
-            if prob < best_prob {
-                best_prob = prob;
+            if prob < lowest_prob {
+                lowest_prob = prob;
                 best_prob_index = Some(accession_index);
             }
         }
         match best_prob_index {
-            None => (None, best_prob),
-            Some(index) => {
-                if best_prob < required_prob {
-                    (Some(self.get_accession_of_index(index)), best_prob)
-                } else {
-                    (None, best_prob)
-                }
-            }
+            None => None,
+            Some(index) => Some((lowest_prob, self.get_accession_of_index(index))),
         }
     }
 

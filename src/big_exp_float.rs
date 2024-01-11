@@ -1,11 +1,11 @@
 use crate::decode::{decode_f32, decode_f64};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
 use std::f32::consts::LN_2;
+use std::ops::{Add, Div, Mul, MulAssign, Neg, Sub};
 
-const ONE: BigExpFloat = BigExpFloat {exp: 0, float: 1.0};
-const ZERO: BigExpFloat = BigExpFloat {exp: 0, float: 0.0};
+const ONE: BigExpFloat = BigExpFloat { exp: 0, float: 1.0 };
+const ZERO: BigExpFloat = BigExpFloat { exp: 0, float: 0.0 };
 
 #[derive(Debug, Clone, Copy, PartialOrd, Serialize, Deserialize)]
 pub struct BigExpFloat {

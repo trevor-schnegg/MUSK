@@ -60,19 +60,22 @@ fn main() {
     let mut lowest_prob = BigExpFloat::one();
     while let Some(Ok(read)) = read_iter.next() {
         let read_id = read.id().to_string();
-        let (accession, prob) = database.classify_read(read, args.num_queries, prob_threshold);
+        let (prob, accession) = match database.classify_read(read, args.num_queries) {
+            None => {
+                println!("{}\t0", read_id);
+                continue;
+            }
+            Some(t) => {t}
+        };
         if prob < lowest_prob {
             lowest_prob = prob;
         }
         prob_sum = prob_sum + prob;
         num_prob_sum += 1;
-        match accession {
-            None => {
-                println!("{}\t0", read_id);
-            }
-            Some(accession) => {
-                println!("{}\t{}", read_id, accession2taxid.get(accession).unwrap());
-            }
+        if prob < prob_threshold {
+            println!("{}\t{}", read_id, accession2taxid.get(accession).unwrap());
+        } else {
+            println!("{}\t0", read_id);
         }
         read_query_count += 1;
         if read_query_count % 100000 == 0 {
