@@ -1,4 +1,3 @@
-use crate::utility::two_bit_dna_representation;
 use std::slice::Iter;
 
 pub struct KmerIter<'a> {
@@ -29,17 +28,29 @@ impl<'a> KmerIter<'a> {
                     return None;
                 }
                 Some(c) => {
-                    match two_bit_dna_representation(c) {
-                        None => {
-                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                            buf = 0;
-                            kmers_included = 0;
-                        }
-                        Some(n) => {
-                            buf <<= 2;
-                            buf |= n;
-                            kmers_included += 1;
-                        }
+                    if *c == b'A' || *c == b'a' {
+                        // binary is 00
+                        buf <<= 2;
+                        kmers_included += 1;
+                    } else if *c == b'C' || *c == b'c' {
+                        // binary is 01
+                        buf <<= 2;
+                        buf |= 1;
+                        kmers_included += 1;
+                    } else if *c == b'G' || *c == b'g' {
+                        // binary is 10
+                        buf <<= 2;
+                        buf |= 2;
+                        kmers_included += 1;
+                    } else if *c == b'T' || *c == b't' {
+                        // binary is 11
+                        buf <<= 2;
+                        buf |= 3;
+                        kmers_included += 1;
+                    } else {
+                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                        buf = 0;
+                        kmers_included = 0;
                     }
                 }
             }
@@ -61,15 +72,35 @@ impl<'a> Iterator for KmerIter<'a> {
                 None => {
                     return None;
                 }
-                Some(c) => match two_bit_dna_representation(c) {
-                    None => self.initialize(),
-                    Some(n) => {
+                Some(c) => {
+                    if *c == b'A' || *c == b'a' {
+                        // binary is 00
                         self.curr_kmer <<= 2;
-                        self.curr_kmer |= n;
                         self.curr_kmer &= self.clear_bits;
                         Some(self.curr_kmer)
+                    } else if *c == b'C' || *c == b'c' {
+                        // binary is 01
+                        self.curr_kmer <<= 2;
+                        self.curr_kmer |= 1;
+                        self.curr_kmer &= self.clear_bits;
+                        Some(self.curr_kmer)
+                    } else if *c == b'G' || *c == b'g' {
+                        // binary is 10
+                        self.curr_kmer <<= 2;
+                        self.curr_kmer |= 2;
+                        self.curr_kmer &= self.clear_bits;
+                        Some(self.curr_kmer)
+                    } else if *c == b'T' || *c == b't' {
+                        // binary is 11
+                        self.curr_kmer <<= 2;
+                        self.curr_kmer |= 3;
+                        self.curr_kmer &= self.clear_bits;
+                        Some(self.curr_kmer)
+                    } else {
+                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                        self.initialize()
                     }
-                },
+                }
             }
         }
     }
