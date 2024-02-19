@@ -30,47 +30,50 @@ fn main() {
     info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid = load_taxid2files(file2taxid_path);
     info!("file2taxid loaded! finding the average Hamming distance between the same tax ids");
-    println!("taxid\tavg_set_size\tavg_hamming_distance");
+    // println!("taxid\tavg_set_size\tavg_hamming_distance");
     for (taxid, files) in file2taxid {
         if files.len() == 1 {
             continue;
         }
-        let mut kmer_sets = vec![];
+        let mut info = vec![];
         for file in files {
             let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
             let mut kmer_set = HashSet::new();
+            let mut descriptions = vec![];
             while let Some(Ok(record)) = record_iter.next() {
                 if record.seq().len() < args.kmer_length {
                     continue;
                 }
+                descriptions.push(record.desc().unwrap().to_string());
                 let kmers = KmerIter::from(record.seq(), args.kmer_length);
                 for kmer in kmers {
                     kmer_set.insert(kmer);
                 }
             }
-            kmer_sets.push(kmer_set);
+            info.push((kmer_set, descriptions));
         }
-        let avg_set_size = {
-            let count = kmer_sets.len();
-            let sum: f64 = kmer_sets.iter().map(|x| x.len() as f64).sum();
-            sum / count as f64
-        };
+        // let avg_set_size = {
+        //     let count = info.len();
+        //     let sum: f64 = info.iter().map(|(x, _)| x.len() as f64).sum();
+        //     sum / count as f64
+        // };
         let mut hamming_distances = vec![];
-        for (i1, kmer_set_1) in kmer_sets.iter().enumerate() {
-            for (i2, kmer_set_2) in kmer_sets.iter().enumerate() {
+        for (i1, (kmer_set_1, descriptions_1)) in info.iter().enumerate() {
+            for (i2, (kmer_set_2, descriptions_2)) in info.iter().enumerate() {
                 if i2 <= i1 {
                     continue;
                 }
                 let intersect_size = kmer_set_1.intersection(&kmer_set_2).map(|x| *x).collect::<Vec<usize>>().len();
-                debug!("{}\t{}\t{}", kmer_set_1.len(), kmer_set_2.len(), intersect_size);
+                println!("{}\t{}\t{}", kmer_set_1.len(), kmer_set_2.len(), intersect_size);
+                println!("{:?}\t{:?}", descriptions_1, descriptions_2);
                 hamming_distances.push((kmer_set_1.len() - intersect_size) + (kmer_set_2.len() - intersect_size))
             }
         }
-        let avg_hamming_dist = {
-            let count = hamming_distances.len();
-            let sum: usize = hamming_distances.iter().sum();
-            sum as f64 / count as f64
-        };
-        println!("{}\t{}\t{}", taxid, avg_set_size, avg_hamming_dist);
+        // let avg_hamming_dist = {
+        //     let count = hamming_distances.len();
+        //     let sum: usize = hamming_distances.iter().sum();
+        //     sum as f64 / count as f64
+        // };
+        // println!("{}\t{}\t{}", taxid, avg_set_size, avg_hamming_dist);
     }
 }
