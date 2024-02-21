@@ -2,9 +2,8 @@ use musk::kmer_iter::KmerIter;
 
 fn main() {
     let seq = "ATGCTGA".as_bytes();
-    let mut seq_iter = KmerIter::from(seq, 4);
+    let mut seq_iter = KmerIter::from(seq, 3);
     while let Some(kmer) = seq_iter.next() {
-        println!("{:016b}", kmer);
+        println!("{:08b}", kmer);
     }
-    println!("{}", 1_u16);
 }

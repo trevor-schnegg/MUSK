@@ -65,7 +65,7 @@ fn main() {
                 println!("{}\t0", read_id);
                 continue;
             }
-            Some(t) => {t}
+            Some(t) => t,
         };
         if prob < lowest_prob {
             lowest_prob = prob;

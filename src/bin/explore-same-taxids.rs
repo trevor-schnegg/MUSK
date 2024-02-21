@@ -1,10 +1,11 @@
-use std::collections::HashSet;
 use clap::Parser;
-use musk::io::load_taxid2files;
-use musk::utility::get_fasta_iterator_of_file;
-use std::path::Path;
 use log::{debug, info};
+use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
+use musk::utility::get_fasta_iterator_of_file;
+use std::cmp::min;
+use std::collections::HashSet;
+use std::path::Path;
 
 /// Explores similarities between files with the same species tax id
 #[derive(Parser)]
@@ -63,10 +64,28 @@ fn main() {
                 if i2 <= i1 {
                     continue;
                 }
-                let intersect_size = kmer_set_1.intersection(&kmer_set_2).map(|x| *x).collect::<Vec<usize>>().len();
-                println!("{}\t{}\t{}", kmer_set_1.len(), kmer_set_2.len(), intersect_size);
+                let intersect_size = kmer_set_1
+                    .intersection(&kmer_set_2)
+                    .map(|x| *x)
+                    .collect::<Vec<usize>>()
+                    .len();
+                let union_size = kmer_set_1
+                    .union(&kmer_set_2)
+                    .map(|x| *x)
+                    .collect::<Vec<usize>>()
+                    .len();
+                println!(
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    kmer_set_1.len(),
+                    kmer_set_2.len(),
+                    intersect_size,
+                    union_size,
+                    intersect_size as f64 / union_size as f64,
+                    min(kmer_set_1.len(), kmer_set_2.len()) as f64 / union_size as f64,
+                );
                 println!("{:?}\t{:?}", descriptions_1, descriptions_2);
-                hamming_distances.push((kmer_set_1.len() - intersect_size) + (kmer_set_2.len() - intersect_size))
+                hamming_distances
+                    .push((kmer_set_1.len() - intersect_size) + (kmer_set_2.len() - intersect_size))
             }
         }
         // let avg_hamming_dist = {

@@ -1,8 +1,8 @@
 use clap::Parser;
+use log::{debug, info};
 use musk::io::load_accession2taxid;
 use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
 use std::path::Path;
-use log::{debug, info};
 use taxonomy::{ncbi, TaxRank, Taxonomy};
 
 /// Prints to stdout a file2taxid map (where the species tax id is used)
@@ -32,9 +32,15 @@ fn main() {
 
     info!("reading accession2taxid at {}", args.accession2taxid);
     let accession2taxid = load_accession2taxid(Path::new(&args.accession2taxid));
-    info!("accession2taxid loaded! reading taxonomy at {}", args.taxonomy_dir);
+    info!(
+        "accession2taxid loaded! reading taxonomy at {}",
+        args.taxonomy_dir
+    );
     let taxonomy = ncbi::load(Path::new(&args.taxonomy_dir)).unwrap();
-    info!("taxonomy read! looping through sequences at {}", args.reference_loc);
+    info!(
+        "taxonomy read! looping through sequences at {}",
+        args.reference_loc
+    );
     let mut fasta_files = get_fasta_files(reference_loc).into_iter().enumerate();
     while let Some((i, file)) = fasta_files.next() {
         if i % 2500 == 0 && i != 0 {

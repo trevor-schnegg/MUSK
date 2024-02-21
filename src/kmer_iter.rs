@@ -1,62 +1,86 @@
+use std::cmp::min;
+use std::collections::HashMap;
 use std::slice::Iter;
 
+const COMPLEMENT: [usize; 4] = [3, 2, 1, 0];
+
 pub struct KmerIter<'a> {
+    base2int: HashMap<u8, usize>,
     char_iter: Iter<'a, u8>,
-    kmer_len: usize,
     clear_bits: usize,
     curr_kmer: usize,
+    curr_rev_comp_kmer: usize,
+    first_letter_shift: usize,
     initialized: bool,
+    kmer_len: usize,
 }
 
 impl<'a> KmerIter<'a> {
     pub fn from(seq: &'a [u8], kmer_len: usize) -> Self {
+        let base2int = HashMap::from([
+            (b'A', 0_usize),
+            (b'a', 0_usize),
+            (b'C', 1_usize),
+            (b'c', 1_usize),
+            (b'G', 2_usize),
+            (b'g', 2_usize),
+            (b'T', 3_usize),
+            (b't', 3_usize),
+        ]);
         KmerIter {
+            base2int,
             char_iter: seq.iter(),
-            kmer_len,
             clear_bits: 2_usize.pow((kmer_len * 2) as u32) - 1,
             curr_kmer: 0,
+            curr_rev_comp_kmer: 0,
+            first_letter_shift: (kmer_len - 1) * 2,
             initialized: false,
+            kmer_len,
         }
     }
 
-    fn initialize(&mut self) -> Option<usize> {
+    fn find_next_kmer(&mut self) -> Option<usize> {
         let mut buf = 0;
-        let mut kmers_included = 0_usize;
-        while kmers_included < self.kmer_len {
+        let mut pos = 0_usize;
+        while pos < self.kmer_len {
             match self.char_iter.next() {
                 None => {
                     return None;
                 }
                 Some(c) => {
-                    if *c == b'A' || *c == b'a' {
-                        // binary is 00
-                        buf <<= 2;
-                        kmers_included += 1;
-                    } else if *c == b'C' || *c == b'c' {
-                        // binary is 01
-                        buf <<= 2;
-                        buf |= 1;
-                        kmers_included += 1;
-                    } else if *c == b'G' || *c == b'g' {
-                        // binary is 10
-                        buf <<= 2;
-                        buf |= 2;
-                        kmers_included += 1;
-                    } else if *c == b'T' || *c == b't' {
-                        // binary is 11
-                        buf <<= 2;
-                        buf |= 3;
-                        kmers_included += 1;
-                    } else {
-                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                        buf = 0;
-                        kmers_included = 0;
+                    match self.base2int.get(c) {
+                        None => {
+                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                            buf = 0;
+                            pos = 0;
+                        }
+                        Some(i) => {
+                            buf <<= 2;
+                            buf |= *i;
+                            pos += 1;
+                        }
                     }
                 }
             }
         }
         self.curr_kmer = buf;
-        Some(self.curr_kmer)
+        self.curr_rev_comp_kmer = self.reverse_compliment(buf);
+        Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+    }
+
+    /// Only call this if I already have an actual k-mer
+    fn reverse_compliment(&self, kmer: usize) -> usize {
+        let mut buf = 0;
+        let mut comp_kmer = (!kmer) & self.clear_bits;
+        for _ in 0..self.kmer_len {
+            // Pop the right-most letter
+            let letter = comp_kmer & 3;
+            comp_kmer >>= 2;
+            // Add to the right of the buffer
+            buf <<= 2;
+            buf |= letter;
+        }
+        buf
     }
 }
 
@@ -66,39 +90,28 @@ impl<'a> Iterator for KmerIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if !self.initialized {
             self.initialized = true;
-            self.initialize()
+            self.find_next_kmer()
         } else {
             match self.char_iter.next() {
                 None => {
                     return None;
                 }
                 Some(c) => {
-                    if *c == b'A' || *c == b'a' {
-                        // binary is 00
-                        self.curr_kmer <<= 2;
-                        self.curr_kmer &= self.clear_bits;
-                        Some(self.curr_kmer)
-                    } else if *c == b'C' || *c == b'c' {
-                        // binary is 01
-                        self.curr_kmer <<= 2;
-                        self.curr_kmer |= 1;
-                        self.curr_kmer &= self.clear_bits;
-                        Some(self.curr_kmer)
-                    } else if *c == b'G' || *c == b'g' {
-                        // binary is 10
-                        self.curr_kmer <<= 2;
-                        self.curr_kmer |= 2;
-                        self.curr_kmer &= self.clear_bits;
-                        Some(self.curr_kmer)
-                    } else if *c == b'T' || *c == b't' {
-                        // binary is 11
-                        self.curr_kmer <<= 2;
-                        self.curr_kmer |= 3;
-                        self.curr_kmer &= self.clear_bits;
-                        Some(self.curr_kmer)
-                    } else {
-                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                        self.initialize()
+                    match self.base2int.get(c) {
+                        None => {
+                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                            self.find_next_kmer()
+                        }
+                        Some(i) => {
+                            self.curr_kmer <<= 2;
+                            self.curr_kmer |= *i;
+                            self.curr_kmer &= self.clear_bits;
+
+                            self.curr_rev_comp_kmer >>= 2;
+                            self.curr_rev_comp_kmer |= COMPLEMENT[*i] << self.first_letter_shift;
+
+                            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+                        }
                     }
                 }
             }

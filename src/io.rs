@@ -1,19 +1,19 @@
+use log::{error, warn};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader, Lines, Write};
 use std::path::Path;
-use log::{error, warn};
 
 struct TsvIter {
-    tsv_iter: Lines<BufReader<File>>
+    tsv_iter: Lines<BufReader<File>>,
 }
 
 impl TsvIter {
     fn new(path: &Path) -> Self {
         let file = File::open(path).expect(&*format!("could not read tsv at {:?}", path));
         TsvIter {
-            tsv_iter: BufReader::new(file).lines()
+            tsv_iter: BufReader::new(file).lines(),
         }
     }
 }
@@ -23,8 +23,8 @@ impl Iterator for TsvIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.tsv_iter.next() {
-            None => {None},
-            Some(Ok(line)) => {Some(line.split("\t").map(|x| x.to_string()).collect())},
+            None => None,
+            Some(Ok(line)) => Some(line.split("\t").map(|x| x.to_string()).collect()),
             Some(Err(x)) => {
                 error!("{}", x);
                 warn!("skipping the line that caused this error...");
@@ -66,8 +66,12 @@ pub fn load_taxid2files(file2taxid_path: &Path) -> HashMap<u32, Vec<String>> {
         let file = vec.get(0).unwrap().clone();
         let taxid = vec.get(1).unwrap().parse::<u32>().unwrap();
         match taxid2file.get_mut(&taxid) {
-            None => {taxid2file.insert(taxid, vec![file]);}
-            Some(file_vec) => {file_vec.push(file);}
+            None => {
+                taxid2file.insert(taxid, vec![file]);
+            }
+            Some(file_vec) => {
+                file_vec.push(file);
+            }
         }
     }
     taxid2file

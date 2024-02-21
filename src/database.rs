@@ -60,11 +60,7 @@ impl Database<u16> {
             .push(insert_count as f64 / self.num_kmers as f64);
     }
 
-    pub fn classify_read(
-        &self,
-        read: Record,
-        num_queries: usize,
-    ) -> Option<(BigExpFloat, &str)> {
+    pub fn classify_read(&self, read: Record, num_queries: usize) -> Option<(BigExpFloat, &str)> {
         let f_kmers = KmerIter::from(read.seq(), self.kmer_len)
             .take(num_queries)
             .collect::<Vec<usize>>();
@@ -85,15 +81,18 @@ impl Database<u16> {
                 *rc_hits.get_mut(bit_index).unwrap() += 1;
             }
         }
-        match (self.get_lowest_probability(f_hits, num_queries as u64), self.get_lowest_probability(rc_hits, num_queries as u64)) {
+        match (
+            self.get_lowest_probability(f_hits, num_queries as u64),
+            self.get_lowest_probability(rc_hits, num_queries as u64),
+        ) {
             (Some(t1), Some(t2)) => {
                 if t1.0 < t2.0 {
                     Some(t1)
                 } else {
                     Some(t2)
                 }
-            },
-            _ => None
+            }
+            _ => None,
         }
     }
 
@@ -105,7 +104,9 @@ impl Database<u16> {
         let (mut lowest_prob, mut best_prob_index) = (BigExpFloat::one(), None);
         for (accession_index, num_hits) in index_to_hit_counts.into_iter().enumerate() {
             let accession_probability = *self.probabilities.get(accession_index).unwrap();
-            if num_hits.is_zero() || (num_hits as f64) < (accession_probability * num_queries as f64) {
+            if num_hits.is_zero()
+                || (num_hits as f64) < (accession_probability * num_queries as f64)
+            {
                 continue;
             }
             let prob_f64 = Binomial::new(accession_probability, num_queries)
