@@ -36,6 +36,7 @@ fn main() {
         if files.len() == 1 {
             continue;
         }
+        debug!("creating hashsets for taxid '{}' with {} files...", taxid, files.len());
         let mut info = vec![];
         for file in files {
             let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -53,12 +54,7 @@ fn main() {
             }
             info.push((kmer_set, descriptions));
         }
-        // let avg_set_size = {
-        //     let count = info.len();
-        //     let sum: f64 = info.iter().map(|(x, _)| x.len() as f64).sum();
-        //     sum / count as f64
-        // };
-        let mut hamming_distances = vec![];
+        debug!("hashsets created! performing comparisons...");
         for (i1, (kmer_set_1, descriptions_1)) in info.iter().enumerate() {
             for (i2, (kmer_set_2, descriptions_2)) in info.iter().enumerate() {
                 if i2 <= i1 {
@@ -84,15 +80,7 @@ fn main() {
                     min(kmer_set_1.len(), kmer_set_2.len()) as f64 / union_size as f64,
                 );
                 println!("{:?}\t{:?}", descriptions_1, descriptions_2);
-                hamming_distances
-                    .push((kmer_set_1.len() - intersect_size) + (kmer_set_2.len() - intersect_size))
             }
         }
-        // let avg_hamming_dist = {
-        //     let count = hamming_distances.len();
-        //     let sum: usize = hamming_distances.iter().sum();
-        //     sum as f64 / count as f64
-        // };
-        // println!("{}\t{}\t{}", taxid, avg_set_size, avg_hamming_dist);
     }
 }
