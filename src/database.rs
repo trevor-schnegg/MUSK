@@ -61,39 +61,18 @@ impl Database<u16> {
     }
 
     pub fn classify_read(&self, read: Record, num_queries: usize) -> Option<(BigExpFloat, &str)> {
-        let f_kmers = KmerIter::from(read.seq(), self.kmer_len)
+        let kmers = KmerIter::from(read.seq(), self.kmer_len)
             .take(num_queries)
             .collect::<Vec<usize>>();
-        let num_queries = f_kmers.len();
-        let rc = reverse_complement(read.seq());
-        let rc_kmers = KmerIter::from(&rc, self.kmer_len)
-            .take(num_queries)
-            .collect::<Vec<usize>>();
-        assert_eq!(f_kmers.len(), rc_kmers.len());
+        let num_queries = kmers.len();
 
-        let mut f_hits = vec![0_u64; self.accessions.len()];
-        let mut rc_hits = vec![0_u64; self.accessions.len()];
-        for (f_kmer, rc_kmer) in f_kmers.into_iter().zip(rc_kmers) {
-            for bit_index in BitIter::from(*self.kmer2occ.get(f_kmer).unwrap()) {
-                *f_hits.get_mut(bit_index).unwrap() += 1;
-            }
-            for bit_index in BitIter::from(*self.kmer2occ.get(rc_kmer).unwrap()) {
-                *rc_hits.get_mut(bit_index).unwrap() += 1;
+        let mut hits = vec![0_u64; self.accessions.len()];
+        for kmer in kmers {
+            for bit_index in BitIter::from(*self.kmer2occ.get(kmer).unwrap()) {
+                *hits.get_mut(bit_index).unwrap() += 1;
             }
         }
-        match (
-            self.get_lowest_probability(f_hits, num_queries as u64),
-            self.get_lowest_probability(rc_hits, num_queries as u64),
-        ) {
-            (Some(t1), Some(t2)) => {
-                if t1.0 < t2.0 {
-                    Some(t1)
-                } else {
-                    Some(t2)
-                }
-            }
-            _ => None,
-        }
+        self.get_lowest_probability(hits, num_queries as u64)
     }
 
     fn get_lowest_probability(
@@ -109,13 +88,15 @@ impl Database<u16> {
             {
                 continue;
             }
-            let prob_f64 = Binomial::new(accession_probability, num_queries)
-                .unwrap()
-                .sf(num_hits);
-            let prob = if prob_f64.is_zero() {
-                sf(accession_probability, num_queries, num_hits, &self.consts)
-            } else {
-                BigExpFloat::from_f64(prob_f64)
+            let prob = {
+                let prob_f64 = Binomial::new(accession_probability, num_queries)
+                    .unwrap()
+                    .sf(num_hits);
+                if prob_f64.is_zero() {
+                    sf(accession_probability, num_queries, num_hits, &self.consts)
+                } else {
+                    BigExpFloat::from_f64(prob_f64)
+                }
             };
             if prob < lowest_prob {
                 lowest_prob = prob;

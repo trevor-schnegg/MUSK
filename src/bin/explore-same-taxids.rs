@@ -36,7 +36,11 @@ fn main() {
         if files.len() == 1 {
             continue;
         }
-        debug!("creating hashsets for taxid '{}' with {} files...", taxid, files.len());
+        debug!(
+            "creating hashsets for taxid '{}' with {} files...",
+            taxid,
+            files.len()
+        );
         let mut info = vec![];
         for file in files {
             let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
