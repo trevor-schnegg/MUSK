@@ -2,7 +2,6 @@ use crate::big_exp_float::BigExpFloat;
 use crate::binomial_sf::sf;
 use crate::consts::Consts;
 use crate::kmer_iter::KmerIter;
-use crate::utility::reverse_complement;
 use bio::io::fasta::Record;
 use bit_iter::BitIter;
 use num_traits::{One, Zero};

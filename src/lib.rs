@@ -7,3 +7,4 @@ pub mod generator;
 pub mod io;
 pub mod kmer_iter;
 pub mod utility;
+pub mod explore;

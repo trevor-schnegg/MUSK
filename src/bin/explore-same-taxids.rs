@@ -3,9 +3,9 @@ use log::{debug, info};
 use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use std::cmp::min;
 use std::collections::HashSet;
 use std::path::Path;
+use musk::explore::connected_components;
 
 /// Explores similarities between files with the same species tax id
 #[derive(Parser)]
@@ -30,10 +30,10 @@ fn main() {
 
     info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid = load_taxid2files(file2taxid_path);
-    info!("file2taxid loaded! finding the average Hamming distance between the same tax ids");
-    // println!("taxid\tavg_set_size\tavg_hamming_distance");
+    info!("file2taxid loaded! exploring files with the same tax id");
     for (taxid, files) in file2taxid {
         if files.len() == 1 {
+            println!("{}\t{}", taxid, files[0]);
             continue;
         }
         debug!(
@@ -41,50 +41,31 @@ fn main() {
             taxid,
             files.len()
         );
-        let mut info = vec![];
-        for file in files {
-            let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
-            let mut kmer_set = HashSet::new();
-            let mut descriptions = vec![];
+        let mut sets = vec![];
+        for file in &files {
+            let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
+            let mut total_kmer_set = HashSet::new();
             while let Some(Ok(record)) = record_iter.next() {
                 if record.seq().len() < args.kmer_length {
                     continue;
                 }
-                descriptions.push(record.desc().unwrap().to_string());
-                let kmers = KmerIter::from(record.seq(), args.kmer_length);
-                for kmer in kmers {
-                    kmer_set.insert(kmer);
-                }
+                let kmers: HashSet<usize> = HashSet::from_iter(KmerIter::from(record.seq(), args.kmer_length));
+                total_kmer_set = HashSet::from_iter(total_kmer_set.union(&kmers).map(|x| *x));
             }
-            info.push((kmer_set, descriptions));
+            sets.push(total_kmer_set);
         }
         debug!("hashsets created! performing comparisons...");
-        for (i1, (kmer_set_1, descriptions_1)) in info.iter().enumerate() {
-            for (i2, (kmer_set_2, descriptions_2)) in info.iter().enumerate() {
-                if i2 <= i1 {
-                    continue;
+        let connected_components = connected_components(sets, 0.8);
+        for component in connected_components {
+            let mut files_string = String::new();
+            for file_index in component {
+                if files_string.is_empty() {
+                    files_string += &*files[file_index];
+                } else {
+                    files_string += &*(String::from(",") + &*files[file_index])
                 }
-                let intersect_size = kmer_set_1
-                    .intersection(&kmer_set_2)
-                    .map(|x| *x)
-                    .collect::<Vec<usize>>()
-                    .len();
-                let union_size = kmer_set_1
-                    .union(&kmer_set_2)
-                    .map(|x| *x)
-                    .collect::<Vec<usize>>()
-                    .len();
-                println!(
-                    "{}\t{}\t{}\t{}\t{}\t{}",
-                    kmer_set_1.len(),
-                    kmer_set_2.len(),
-                    intersect_size,
-                    union_size,
-                    intersect_size as f64 / union_size as f64,
-                    min(kmer_set_1.len(), kmer_set_2.len()) as f64 / union_size as f64,
-                );
-                println!("{:?}\t{:?}", descriptions_1, descriptions_2);
             }
+            println!("{}\t{}", taxid, files_string);
         }
     }
 }
