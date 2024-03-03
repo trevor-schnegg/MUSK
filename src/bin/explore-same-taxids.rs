@@ -7,6 +7,30 @@ use std::collections::HashSet;
 use std::path::Path;
 use musk::explore::connected_components;
 
+fn create_sorted_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<Vec<usize>> {
+    let mut vectors = vec![];
+    for file in files {
+        let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
+        let mut total_kmer_set = HashSet::new();
+        while let Some(Ok(record)) = record_iter.next() {
+            if record.seq().len() < kmer_length {
+                continue;
+            }
+            for kmer in KmerIter::from(record.seq(), kmer_length) {
+                total_kmer_set.insert(kmer);
+            }
+        }
+        vectors.push(convert_to_sorted_vector(total_kmer_set));
+    }
+    vectors
+}
+
+fn convert_to_sorted_vector(set: HashSet<usize>) -> Vec<usize> {
+    let mut vector = set.into_iter().collect::<Vec<usize>>();
+    vector.sort();
+    vector
+}
+
 /// Explores similarities between files with the same species tax id
 #[derive(Parser)]
 #[clap(version, about)]
@@ -37,25 +61,13 @@ fn main() {
             continue;
         }
         debug!(
-            "creating hashsets for taxid '{}' with {} files...",
+            "creating sets for taxid '{}' with {} files...",
             taxid,
             files.len()
         );
-        let mut sets = vec![];
-        for file in &files {
-            let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
-            let mut total_kmer_set = HashSet::new();
-            while let Some(Ok(record)) = record_iter.next() {
-                if record.seq().len() < args.kmer_length {
-                    continue;
-                }
-                let kmers: HashSet<usize> = HashSet::from_iter(KmerIter::from(record.seq(), args.kmer_length));
-                total_kmer_set = HashSet::from_iter(total_kmer_set.union(&kmers).map(|x| *x));
-            }
-            sets.push(total_kmer_set);
-        }
+        let sorted_vectors = create_sorted_vectors(&files, args.kmer_length);
         debug!("hashsets created! performing comparisons...");
-        let connected_components = connected_components(sets, 0.8);
+        let connected_components = connected_components(sorted_vectors, 0.8);
         for component in connected_components {
             let mut files_string = String::new();
             for file_index in component {

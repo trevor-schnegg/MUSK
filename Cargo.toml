@@ -18,3 +18,4 @@ rand = "*"
 bit-iter = "*"
 approx = "*"
 taxonomy = "*"
+vers-vecs = { version = "*", features = ["serde"]}
