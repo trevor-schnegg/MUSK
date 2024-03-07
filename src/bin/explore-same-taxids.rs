@@ -3,32 +3,26 @@ use log::{debug, info};
 use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use std::collections::HashSet;
+use vers_vecs::{BitVec, RsVec};
 use std::path::Path;
 use musk::explore::connected_components;
 
-fn create_sorted_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<Vec<usize>> {
+fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<RsVec> {
     let mut vectors = vec![];
     for file in files {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
-        let mut total_kmer_set = HashSet::new();
+        let mut total_kmer_set = BitVec::from_zeros(4_usize.pow(kmer_length as u32));
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                total_kmer_set.insert(kmer);
+                total_kmer_set.set(kmer, 1).unwrap();
             }
         }
-        vectors.push(convert_to_sorted_vector(total_kmer_set));
+        vectors.push(RsVec::from_bit_vec(total_kmer_set));
     }
     vectors
-}
-
-fn convert_to_sorted_vector(set: HashSet<usize>) -> Vec<usize> {
-    let mut vector = set.into_iter().collect::<Vec<usize>>();
-    vector.sort();
-    vector
 }
 
 /// Explores similarities between files with the same species tax id
@@ -65,7 +59,7 @@ fn main() {
             taxid,
             files.len()
         );
-        let sorted_vectors = create_sorted_vectors(&files, args.kmer_length);
+        let sorted_vectors = create_bit_vectors(&files, args.kmer_length);
         debug!("hashsets created! performing comparisons...");
         let connected_components = connected_components(sorted_vectors, 0.8);
         for component in connected_components {
