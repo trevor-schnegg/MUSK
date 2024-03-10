@@ -4,28 +4,29 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use vers_vecs::RsVec;
 
-pub fn connected_components(bit_vectors: Vec<RsVec>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+pub fn connected_components(bit_vectors: Vec<(RsVec, usize)>, minimum_similarity: f64) -> Vec<Vec<usize>> {
     let graph = create_graph(bit_vectors, minimum_similarity);
     let components = bfs(graph);
     components
 }
 
-fn create_graph(bit_vectors: Vec<RsVec>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+fn create_graph(bit_vectors: Vec<(RsVec, usize)>, minimum_similarity: f64) -> Vec<Vec<usize>> {
     let mut graph = vec![vec![]; bit_vectors.len()];
-    let kmer_sets_arc = Arc::new(bit_vectors);
+    let bit_vectors_arc = Arc::new(bit_vectors);
     let (sender, receiver) = mpsc::sync_channel(64);
-    for i1 in 0..kmer_sets_arc.len() {
+    for i1 in 0..bit_vectors_arc.len() {
         let sender_clone = sender.clone();
-        let kmer_sets_arc_clone = kmer_sets_arc.clone();
+        let kmer_sets_arc_clone = bit_vectors_arc.clone();
         thread::spawn(move || {
             let mut edges = vec![];
             for i2 in 0..kmer_sets_arc_clone.len() {
                 if i2 <= i1 {
                     continue;
                 }
-                let (sorted_vector_1, sorted_vector_2) = (&kmer_sets_arc_clone[i1], &kmer_sets_arc_clone[i2]);
-                let intersect_size = intersect(sorted_vector_1, sorted_vector_2);
-                let min_coverage = intersect_size as f64 / min(sorted_vector_1.len(), sorted_vector_2.len()) as f64;
+                let min_size = min(kmer_sets_arc_clone[i1].1, kmer_sets_arc_clone[i2].1);
+                let (bit_vector_1, bit_vector_2) = (&kmer_sets_arc_clone[i1].0, &kmer_sets_arc_clone[i2].0);
+                let intersect_size = intersect(bit_vector_1, bit_vector_2);
+                let min_coverage = intersect_size as f64 / min_size as f64;
                 if min_coverage >= minimum_similarity {
                     edges.push((i1, i2));
                 }

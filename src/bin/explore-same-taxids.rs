@@ -4,23 +4,26 @@ use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
 use vers_vecs::{BitVec, RsVec};
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 use musk::explore::connected_components;
 
-fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<RsVec> {
+fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<(RsVec, usize)> {
     let mut vectors = vec![];
     for file in files {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
         let mut total_kmer_set = BitVec::from_zeros(4_usize.pow(kmer_length as u32));
+        let mut hash_set = HashSet::new();
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
                 total_kmer_set.set(kmer, 1).unwrap();
+                hash_set.insert(kmer);
             }
         }
-        vectors.push(RsVec::from_bit_vec(total_kmer_set));
+        let size = total_kmer_set.count_ones() as usize;
+        vectors.push((RsVec::from_bit_vec(total_kmer_set), size));
     }
     vectors
 }
@@ -59,9 +62,9 @@ fn main() {
             taxid,
             files.len()
         );
-        let sorted_vectors = create_bit_vectors(&files, args.kmer_length);
+        let bit_vectors = create_bit_vectors(&files, args.kmer_length);
         debug!("hashsets created! performing comparisons...");
-        let connected_components = connected_components(sorted_vectors, 0.8);
+        let connected_components = connected_components(bit_vectors, 0.8);
         for component in connected_components {
             let mut files_string = String::new();
             for file_index in component {
