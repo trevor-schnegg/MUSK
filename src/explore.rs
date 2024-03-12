@@ -2,25 +2,27 @@ use roaring::RoaringBitmap;
 use std::cmp::min;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{mpsc, Arc};
-use std::thread;
+use threadpool::ThreadPool;
 
 pub fn connected_components(
     bit_vectors: Vec<RoaringBitmap>,
     minimum_similarity: f64,
+    thread_number: usize,
 ) -> Vec<Vec<usize>> {
-    let graph = create_graph(bit_vectors, minimum_similarity);
+    let graph = create_graph(bit_vectors, minimum_similarity, thread_number);
     let components = bfs(graph);
     components
 }
 
-fn create_graph(bitmaps: Vec<RoaringBitmap>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+fn create_graph(bitmaps: Vec<RoaringBitmap>, minimum_similarity: f64, thread_number: usize) -> Vec<Vec<usize>> {
     let mut graph = vec![vec![]; bitmaps.len()];
     let bitmaps_arc = Arc::new(bitmaps);
-    let (sender, receiver) = mpsc::sync_channel(14);
+    let (sender, receiver) = mpsc::channel();
+    let pool = ThreadPool::new(thread_number);
     for i1 in 0..bitmaps_arc.len() {
         let sender_clone = sender.clone();
         let bitmaps_arc_clone = bitmaps_arc.clone();
-        thread::spawn(move || {
+        pool.execute(move || {
             for i2 in 0..bitmaps_arc_clone.len() {
                 if i2 <= i1 {
                     continue;

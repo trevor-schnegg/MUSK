@@ -7,14 +7,15 @@ use musk::utility::get_fasta_iterator_of_file;
 use roaring::RoaringBitmap;
 use std::path::Path;
 use std::sync::mpsc;
-use std::thread;
+use threadpool::ThreadPool;
 
-fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<RoaringBitmap> {
+fn create_bit_vectors(files: &Vec<String>, kmer_length: usize, thread_number: usize) -> Vec<RoaringBitmap> {
     let mut bitmaps = vec![];
-    let (sender, receiver) = mpsc::sync_channel(14);
+    let (sender, receiver) = mpsc::channel();
+    let pool = ThreadPool::new(thread_number);
     for file in files.clone() {
         let sender_clone = sender.clone();
-        thread::spawn(move || {
+        pool.execute(move || {
             let mut bitmap = RoaringBitmap::new();
             let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
             while let Some(Ok(record)) = record_iter.next() {
@@ -44,6 +45,10 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
+    #[arg(short, long, default_value_t = 12)]
+    /// Length of k-mer to use in the database
+    thread_number: usize,
+
     #[arg()]
     /// the file2taxid file
     file2taxid: String,
@@ -69,9 +74,9 @@ fn main() {
             taxid,
             files.len()
         );
-        let bit_vectors = create_bit_vectors(&files, args.kmer_length);
+        let bit_vectors = create_bit_vectors(&files, args.kmer_length, args.thread_number);
         debug!("hashsets created! performing comparisons...");
-        let connected_components = connected_components(bit_vectors, 0.8);
+        let connected_components = connected_components(bit_vectors, 0.8, args.thread_number);
         for component in connected_components {
             let mut files_string = String::new();
             for file_index in component {
