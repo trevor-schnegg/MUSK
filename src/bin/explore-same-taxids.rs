@@ -3,25 +3,24 @@ use log::{debug, info};
 use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use vers_vecs::{BitVec, RsVec};
+use roaring::RoaringBitmap;
 use std::path::Path;
 use musk::explore::connected_components;
 
-fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<(RsVec, usize)> {
+fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<RoaringBitmap> {
     let mut vectors = vec![];
     for file in files {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
-        let mut total_kmer_set = BitVec::from_zeros(4_usize.pow(kmer_length as u32));
+        let mut total_kmer_set = RoaringBitmap::new();
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                total_kmer_set.set(kmer, 1).unwrap();
+                total_kmer_set.insert(kmer as u32);
             }
         }
-        let size = total_kmer_set.count_ones() as usize;
-        vectors.push((RsVec::from_bit_vec(total_kmer_set), size));
+        vectors.push(total_kmer_set);
     }
     vectors
 }

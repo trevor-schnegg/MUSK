@@ -3,11 +3,11 @@ use log::info;
 use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use vers_vecs::{BitVec, RsVec};
+use roaring::RoaringBitmap;
 use std::path::Path;
 
-fn create_bit_vector(files: &Vec<String>, kmer_length: usize) -> (RsVec, usize) {
-    let mut total_kmer_set = BitVec::from_zeros(4_usize.pow(kmer_length as u32));
+fn create_bit_vector(files: &Vec<String>, kmer_length: usize) -> RoaringBitmap {
+    let mut total_kmer_set = RoaringBitmap::new();
     for file in files {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
         while let Some(Ok(record)) = record_iter.next() {
@@ -15,12 +15,11 @@ fn create_bit_vector(files: &Vec<String>, kmer_length: usize) -> (RsVec, usize) 
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                total_kmer_set.set(kmer, 1).unwrap();
+                total_kmer_set.insert(kmer as u32);
             }
         }
     }
-    let size = total_kmer_set.count_ones() as usize;
-    (RsVec::from_bit_vec(total_kmer_set), size)
+    total_kmer_set
 }
 
 /// Explores similarities between files with the same species tax id
@@ -49,6 +48,5 @@ fn main() {
     info!("file2taxid loaded! exploring files with the same tax id");
     for (taxid, files) in file2taxid {
         let bit_vector = create_bit_vector(&files, args.kmer_length);
-        println!("bits: {}, number of ones: {}", bit_vector.0.len(), bit_vector.1);
     }
 }

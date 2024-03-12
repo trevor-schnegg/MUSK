@@ -2,15 +2,15 @@ use std::cmp::min;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, mpsc};
 use std::thread;
-use vers_vecs::RsVec;
+use roaring::RoaringBitmap;
 
-pub fn connected_components(bit_vectors: Vec<(RsVec, usize)>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+pub fn connected_components(bit_vectors: Vec<RoaringBitmap>, minimum_similarity: f64) -> Vec<Vec<usize>> {
     let graph = create_graph(bit_vectors, minimum_similarity);
     let components = bfs(graph);
     components
 }
 
-fn create_graph(bit_vectors: Vec<(RsVec, usize)>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+fn create_graph(bit_vectors: Vec<RoaringBitmap>, minimum_similarity: f64) -> Vec<Vec<usize>> {
     let mut graph = vec![vec![]; bit_vectors.len()];
     let bit_vectors_arc = Arc::new(bit_vectors);
     let (sender, receiver) = mpsc::sync_channel(64);
@@ -23,11 +23,10 @@ fn create_graph(bit_vectors: Vec<(RsVec, usize)>, minimum_similarity: f64) -> Ve
                 if i2 <= i1 {
                     continue;
                 }
-                let min_size = min(kmer_sets_arc_clone[i1].1, kmer_sets_arc_clone[i2].1);
-                let (bit_vector_1, bit_vector_2) = (&kmer_sets_arc_clone[i1].0, &kmer_sets_arc_clone[i2].0);
+                let (bit_vector_1, bit_vector_2) = (&kmer_sets_arc_clone[i1], &kmer_sets_arc_clone[i2]);
                 let intersect_size = intersect(bit_vector_1, bit_vector_2);
-                let min_coverage = intersect_size as f64 / min_size as f64;
-                if min_coverage >= minimum_similarity {
+                let minimum_containment = intersect_size as f64 / min(bit_vector_1.len(), bit_vector_2.len()) as f64;
+                if minimum_containment >= minimum_similarity {
                     edges.push((i1, i2));
                 }
             }
@@ -44,26 +43,8 @@ fn create_graph(bit_vectors: Vec<(RsVec, usize)>, minimum_similarity: f64) -> Ve
     graph
 }
 
-fn intersect(vector_1: &RsVec, vector_2: &RsVec) -> usize {
-    let (mut iterator_1, mut iterator_2) = (vector_1.iter1(), vector_2.iter1());
-    let (mut current_1, mut current_2) = (iterator_1.next(), iterator_2.next());
-    let mut intersection_size = 0_usize;
-    loop {
-        match (current_1, current_2) {
-            (Some(x), Some(y)) => {
-                if x < y {
-                    current_1 = iterator_1.next();
-                } else if y > x {
-                    current_2 = iterator_2.next();
-                } else {
-                    intersection_size += 1;
-                    current_1 = iterator_1.next();
-                }
-            },
-            _ => break,
-        }
-    }
-    intersection_size
+fn intersect(vector_1: &RoaringBitmap, vector_2: &RoaringBitmap) -> usize {
+    vector_1.intersection_len(vector_2) as usize
 }
 
 /// Returns the connected components of all nodes
