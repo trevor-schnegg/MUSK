@@ -5,18 +5,18 @@ use std::slice::Iter;
 const COMPLEMENT: [usize; 4] = [3, 2, 1, 0];
 
 pub struct KmerIter<'a> {
-    base2int: HashMap<u8, usize>,
-    char_iter: Iter<'a, u8>,
+    base2integer: HashMap<u8, usize>,
+    character_iterator: Iter<'a, u8>,
     clear_bits: usize,
-    curr_kmer: usize,
-    curr_rev_comp_kmer: usize,
+    current_kmer: usize,
+    current_reverse_complement_kmer: usize,
     first_letter_shift: usize,
     initialized: bool,
-    kmer_len: usize,
+    kmer_length: usize,
 }
 
 impl<'a> KmerIter<'a> {
-    pub fn from(seq: &'a [u8], kmer_len: usize) -> Self {
+    pub fn from(sequence: &'a [u8], kmer_length: usize) -> Self {
         let base2int = HashMap::from([
             (b'A', 0_usize),
             (b'a', 0_usize),
@@ -28,59 +28,59 @@ impl<'a> KmerIter<'a> {
             (b't', 3_usize),
         ]);
         KmerIter {
-            base2int,
-            char_iter: seq.iter(),
-            clear_bits: 2_usize.pow((kmer_len * 2) as u32) - 1,
-            curr_kmer: 0,
-            curr_rev_comp_kmer: 0,
-            first_letter_shift: (kmer_len - 1) * 2,
+            base2integer: base2int,
+            character_iterator: sequence.iter(),
+            clear_bits: 2_usize.pow((kmer_length * 2) as u32) - 1,
+            current_kmer: 0,
+            current_reverse_complement_kmer: 0,
+            first_letter_shift: (kmer_length - 1) * 2,
             initialized: false,
-            kmer_len,
+            kmer_length,
         }
     }
 
     fn find_next_kmer(&mut self) -> Option<usize> {
-        let mut buf = 0;
-        let mut pos = 0_usize;
-        while pos < self.kmer_len {
-            match self.char_iter.next() {
+        let mut buffer = 0;
+        let mut position = 0_usize;
+        while position < self.kmer_length {
+            match self.character_iterator.next() {
                 None => {
                     return None;
                 }
                 Some(c) => {
-                    match self.base2int.get(c) {
+                    match self.base2integer.get(c) {
                         None => {
                             // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                            buf = 0;
-                            pos = 0;
+                            buffer = 0;
+                            position = 0;
                         }
                         Some(i) => {
-                            buf <<= 2;
-                            buf |= *i;
-                            pos += 1;
+                            buffer <<= 2;
+                            buffer |= *i;
+                            position += 1;
                         }
                     }
                 }
             }
         }
-        self.curr_kmer = buf;
-        self.curr_rev_comp_kmer = self.reverse_compliment(buf);
-        Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+        self.current_kmer = buffer;
+        self.current_reverse_complement_kmer = self.reverse_compliment(buffer);
+        Some(min(self.current_kmer, self.current_reverse_complement_kmer))
     }
 
     /// Only call this if I already have an actual k-mer
     fn reverse_compliment(&self, kmer: usize) -> usize {
-        let mut buf = 0;
-        let mut comp_kmer = (!kmer) & self.clear_bits;
-        for _ in 0..self.kmer_len {
+        let mut buffer = 0;
+        let mut complement_kmer = (!kmer) & self.clear_bits;
+        for _ in 0..self.kmer_length {
             // Pop the right-most letter
-            let letter = comp_kmer & 3;
-            comp_kmer >>= 2;
+            let letter = complement_kmer & 3;
+            complement_kmer >>= 2;
             // Add to the right of the buffer
-            buf <<= 2;
-            buf |= letter;
+            buffer <<= 2;
+            buffer |= letter;
         }
-        buf
+        buffer
     }
 }
 
@@ -92,25 +92,26 @@ impl<'a> Iterator for KmerIter<'a> {
             self.initialized = true;
             self.find_next_kmer()
         } else {
-            match self.char_iter.next() {
+            match self.character_iterator.next() {
                 None => {
                     return None;
                 }
-                Some(c) => {
-                    match self.base2int.get(c) {
+                Some(character) => {
+                    match self.base2integer.get(character) {
                         None => {
                             // Encountered a character that isn't A (a), C (c), G (g), or T (t)
                             self.find_next_kmer()
                         }
-                        Some(i) => {
-                            self.curr_kmer <<= 2;
-                            self.curr_kmer |= *i;
-                            self.curr_kmer &= self.clear_bits;
+                        Some(integer) => {
+                            self.current_kmer <<= 2;
+                            self.current_kmer |= *integer;
+                            self.current_kmer &= self.clear_bits;
 
-                            self.curr_rev_comp_kmer >>= 2;
-                            self.curr_rev_comp_kmer |= COMPLEMENT[*i] << self.first_letter_shift;
+                            self.current_reverse_complement_kmer >>= 2;
+                            self.current_reverse_complement_kmer |=
+                                COMPLEMENT[*integer] << self.first_letter_shift;
 
-                            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+                            Some(min(self.current_kmer, self.current_reverse_complement_kmer))
                         }
                     }
                 }

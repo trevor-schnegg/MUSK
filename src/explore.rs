@@ -1,44 +1,45 @@
+use roaring::RoaringBitmap;
 use std::cmp::min;
 use std::collections::{HashSet, VecDeque};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use std::thread;
-use roaring::RoaringBitmap;
 
-pub fn connected_components(bit_vectors: Vec<RoaringBitmap>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+pub fn connected_components(
+    bit_vectors: Vec<RoaringBitmap>,
+    minimum_similarity: f64,
+) -> Vec<Vec<usize>> {
     let graph = create_graph(bit_vectors, minimum_similarity);
     let components = bfs(graph);
     components
 }
 
-fn create_graph(bit_vectors: Vec<RoaringBitmap>, minimum_similarity: f64) -> Vec<Vec<usize>> {
-    let mut graph = vec![vec![]; bit_vectors.len()];
-    let bit_vectors_arc = Arc::new(bit_vectors);
-    let (sender, receiver) = mpsc::sync_channel(64);
-    for i1 in 0..bit_vectors_arc.len() {
+fn create_graph(bitmaps: Vec<RoaringBitmap>, minimum_similarity: f64) -> Vec<Vec<usize>> {
+    let mut graph = vec![vec![]; bitmaps.len()];
+    let bitmaps_arc = Arc::new(bitmaps);
+    let (sender, receiver) = mpsc::sync_channel(14);
+    for i1 in 0..bitmaps_arc.len() {
         let sender_clone = sender.clone();
-        let kmer_sets_arc_clone = bit_vectors_arc.clone();
+        let bitmaps_arc_clone = bitmaps_arc.clone();
         thread::spawn(move || {
-            let mut edges = vec![];
-            for i2 in 0..kmer_sets_arc_clone.len() {
+            for i2 in 0..bitmaps_arc_clone.len() {
                 if i2 <= i1 {
                     continue;
                 }
-                let (bit_vector_1, bit_vector_2) = (&kmer_sets_arc_clone[i1], &kmer_sets_arc_clone[i2]);
+                let (bit_vector_1, bit_vector_2) = (&bitmaps_arc_clone[i1], &bitmaps_arc_clone[i2]);
                 let intersect_size = intersect(bit_vector_1, bit_vector_2);
-                let minimum_containment = intersect_size as f64 / min(bit_vector_1.len(), bit_vector_2.len()) as f64;
+                let minimum_containment =
+                    intersect_size as f64 / min(bit_vector_1.len(), bit_vector_2.len()) as f64;
                 if minimum_containment >= minimum_similarity {
-                    edges.push((i1, i2));
+                    sender_clone.send((i1, i2)).unwrap();
                 }
             }
-            sender_clone.send(edges).unwrap();
         });
     }
     drop(sender);
-    for edges in receiver {
-        for edge in edges {
-            graph[edge.0].push(edge.1);
-            graph[edge.1].push(edge.0);
-        }
+    drop(bitmaps_arc);
+    for edge in receiver {
+        graph[edge.0].push(edge.1);
+        graph[edge.1].push(edge.0);
     }
     graph
 }
@@ -60,7 +61,11 @@ fn bfs(graph: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
     connected_components
 }
 
-fn bfs_helper(graph: &Vec<Vec<usize>>, start_node: usize, explored: &mut HashSet<usize>) -> Vec<usize> {
+fn bfs_helper(
+    graph: &Vec<Vec<usize>>,
+    start_node: usize,
+    explored: &mut HashSet<usize>,
+) -> Vec<usize> {
     explored.insert(start_node);
     let mut queue = VecDeque::from([start_node]);
     let mut connected_component = Vec::from([start_node]);

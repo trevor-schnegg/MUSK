@@ -1,28 +1,38 @@
 use clap::Parser;
 use log::{debug, info};
+use musk::explore::connected_components;
 use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
 use roaring::RoaringBitmap;
 use std::path::Path;
-use musk::explore::connected_components;
+use std::sync::mpsc;
+use std::thread;
 
 fn create_bit_vectors(files: &Vec<String>, kmer_length: usize) -> Vec<RoaringBitmap> {
-    let mut vectors = vec![];
-    for file in files {
-        let mut record_iter = get_fasta_iterator_of_file(Path::new(file));
-        let mut total_kmer_set = RoaringBitmap::new();
-        while let Some(Ok(record)) = record_iter.next() {
-            if record.seq().len() < kmer_length {
-                continue;
+    let mut bitmaps = vec![];
+    let (sender, receiver) = mpsc::sync_channel(14);
+    for file in files.clone() {
+        let sender_clone = sender.clone();
+        thread::spawn(move || {
+            let mut bitmap = RoaringBitmap::new();
+            let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
+            while let Some(Ok(record)) = record_iter.next() {
+                if record.seq().len() < kmer_length {
+                    continue;
+                }
+                for kmer in KmerIter::from(record.seq(), kmer_length) {
+                    bitmap.insert(kmer as u32);
+                }
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length) {
-                total_kmer_set.insert(kmer as u32);
-            }
-        }
-        vectors.push(total_kmer_set);
+            sender_clone.send(bitmap).unwrap();
+        });
     }
-    vectors
+    drop(sender);
+    for bitmap in receiver {
+        bitmaps.push(bitmap);
+    }
+    bitmaps
 }
 
 /// Explores similarities between files with the same species tax id

@@ -46,7 +46,7 @@ fn main() {
     info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid = load_taxid2files(file2taxid_path);
     info!("file2taxid loaded! exploring files with the same tax id");
-    for (taxid, files) in file2taxid {
-        let bit_vector = create_bit_vector(&files, args.kmer_length);
+    for (_taxid, files) in file2taxid {
+        let _bit_vector = create_bit_vector(&files, args.kmer_length);
     }
 }
