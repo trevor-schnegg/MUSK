@@ -14,7 +14,11 @@ pub fn connected_components(
     components
 }
 
-fn create_graph(bitmaps: Vec<RoaringBitmap>, minimum_similarity: f64, thread_number: usize) -> Vec<Vec<usize>> {
+fn create_graph(
+    bitmaps: Vec<RoaringBitmap>,
+    minimum_similarity: f64,
+    thread_number: usize,
+) -> Vec<Vec<usize>> {
     let mut graph = vec![vec![]; bitmaps.len()];
     let bitmaps_arc = Arc::new(bitmaps);
     let (sender, receiver) = mpsc::channel();

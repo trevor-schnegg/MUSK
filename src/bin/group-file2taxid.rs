@@ -9,7 +9,11 @@ use std::path::Path;
 use std::sync::mpsc;
 use threadpool::ThreadPool;
 
-fn create_bit_vectors(files: &Vec<String>, kmer_length: usize, thread_number: usize) -> Vec<RoaringBitmap> {
+fn create_bitmaps(
+    files: &Vec<String>,
+    kmer_length: usize,
+    thread_number: usize,
+) -> Vec<RoaringBitmap> {
     let mut bitmaps = vec![];
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(thread_number);
@@ -36,7 +40,8 @@ fn create_bit_vectors(files: &Vec<String>, kmer_length: usize, thread_number: us
     bitmaps
 }
 
-/// Explores similarities between files with the same species tax id
+/// Creates a file to tax id mapping where files with the same tax id are grouped
+/// together if their k-mer spectra are similar enough.
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -74,7 +79,7 @@ fn main() {
             taxid,
             files.len()
         );
-        let bit_vectors = create_bit_vectors(&files, args.kmer_length, args.thread_number);
+        let bit_vectors = create_bitmaps(&files, args.kmer_length, args.thread_number);
         debug!("hashsets created! performing comparisons...");
         let connected_components = connected_components(bit_vectors, 0.8, args.thread_number);
         for component in connected_components {
@@ -86,7 +91,7 @@ fn main() {
                     files_string += &*(String::from(",") + &*files[file_index])
                 }
             }
-            println!("{}\t{}", taxid, files_string);
+            println!("{}\t{}", files_string, taxid);
         }
     }
 }

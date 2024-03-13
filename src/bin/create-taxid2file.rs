@@ -1,11 +1,11 @@
 use clap::Parser;
 use log::{debug, info};
-use musk::io::load_accession2taxid;
+use musk::io::load_string2taxid;
 use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
 use std::path::Path;
 use taxonomy::{ncbi, TaxRank, Taxonomy};
 
-/// Prints to stdout a file2taxid map (where the species tax id is used)
+/// Prints to stdout a map from tax id to file name (from the given reference location)
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -31,7 +31,7 @@ fn main() {
     let reference_loc = Path::new(&args.reference_loc);
 
     info!("reading accession2taxid at {}", args.accession2taxid);
-    let accession2taxid = load_accession2taxid(Path::new(&args.accession2taxid));
+    let accession2taxid = load_string2taxid(Path::new(&args.accession2taxid));
     info!(
         "accession2taxid loaded! reading taxonomy at {}",
         args.taxonomy_dir
@@ -55,6 +55,6 @@ fn main() {
             }
             _ => {}
         }
-        println!("{}\t{}", file, taxid);
+        println!("{}\t{}", taxid, file);
     }
 }

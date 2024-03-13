@@ -2,7 +2,7 @@ use clap::Parser;
 use log::{debug, info};
 use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
-use musk::io::load_accession2taxid;
+use musk::io::load_string2taxid;
 use musk::utility::get_fasta_iterator_of_file;
 use num_traits::{One, Zero};
 use std::ops::Neg;
@@ -45,7 +45,7 @@ fn main() {
 
     // Get accession2taxid
     info!("Loading accession2taxid from: {}", args.accession2taxid);
-    let accession2taxid = load_accession2taxid(accession2taxid);
+    let accession2taxid = load_string2taxid(accession2taxid);
     info!("accession2taxid loaded!");
 
     info!("Loading database");
