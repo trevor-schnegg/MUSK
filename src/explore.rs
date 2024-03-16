@@ -50,8 +50,8 @@ fn create_graph(
     graph
 }
 
-fn intersect(vector_1: &RoaringBitmap, vector_2: &RoaringBitmap) -> usize {
-    vector_1.intersection_len(vector_2) as usize
+fn intersect(vector_1: &RoaringBitmap, vector_2: &RoaringBitmap) -> u64 {
+    vector_1.intersection_len(vector_2)
 }
 
 /// Returns the connected components of all nodes

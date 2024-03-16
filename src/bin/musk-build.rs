@@ -11,7 +11,7 @@ use std::path::Path;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = 15)]
+    #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
 

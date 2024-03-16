@@ -14,10 +14,13 @@ pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
         match line {
             Ok(line) => {
                 let split_line = line.split("\t").collect::<Vec<&str>>();
-                string2taxid.insert(
+                if let Some(taxid) = string2taxid.insert(
                     split_line[0].to_string(),
                     split_line[1].parse::<u32>().unwrap(),
-                );
+                ) {
+                    warn!("key string '{}' was present multiple times", split_line[0]);
+                    warn!("old tax id was '{}', updating to '{}' - make sure this is intentional", taxid, split_line[1]);
+                }
             }
             Err(error) => {
                 warn!(

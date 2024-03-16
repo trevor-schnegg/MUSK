@@ -46,7 +46,7 @@ fn create_bitmaps(
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = 15)]
+    #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
@@ -56,7 +56,7 @@ struct Args {
 
     #[arg()]
     /// the file2taxid file
-    file2taxid: String,
+    taxid2file: String,
 }
 
 fn main() {
@@ -64,14 +64,14 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let file2taxid_path = Path::new(&args.file2taxid);
+    let file2taxid_path = Path::new(&args.taxid2file);
 
-    info!("loading file2taxid at {}", args.file2taxid);
+    info!("loading file2taxid at {}", args.taxid2file);
     let file2taxid = load_taxid2files(file2taxid_path);
     info!("file2taxid loaded! exploring files with the same tax id");
     for (taxid, files) in file2taxid {
         if files.len() == 1 {
-            println!("{}\t{}", taxid, files[0]);
+            println!("{}\t{}", files[0], taxid);
             continue;
         }
         debug!(
@@ -79,9 +79,9 @@ fn main() {
             taxid,
             files.len()
         );
-        let bit_vectors = create_bitmaps(&files, args.kmer_length, args.thread_number);
+        let bitmaps = create_bitmaps(&files, args.kmer_length, args.thread_number);
         debug!("hashsets created! performing comparisons...");
-        let connected_components = connected_components(bit_vectors, 0.8, args.thread_number);
+        let connected_components = connected_components(bitmaps, 0.8, args.thread_number);
         for component in connected_components {
             let mut files_string = String::new();
             for file_index in component {
