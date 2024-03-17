@@ -4,6 +4,7 @@ use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
 use roaring::RoaringBitmap;
+use std::cmp::Reverse;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
@@ -60,9 +61,8 @@ fn main() {
 
     info!("loading files2taxid at {}", args.files2taxid);
     let file2taxid = load_string2taxid(file2taxid_path);
-    info!("creating bitmaps for each group");
+    info!("creating bitmaps for each group...");
     let mut bitmaps = vec![];
-    let mut index2info= vec![];
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(args.thread_number);
     for (files, taxid) in file2taxid {
@@ -73,12 +73,12 @@ fn main() {
         })
     }
     drop(sender);
-    for (bitmap, files, taxid) in receiver {
-        bitmaps.push(bitmap);
-        index2info.push((files, taxid));
+    for triple in receiver {
+        bitmaps.push(triple);
     }
-    info!("bitmaps created! computing distances...");
-    
+
+    info!("bitmaps computed, computing pairwise distances...");
+
     let mut all_distances = vec![];
     let bitmaps_arc = Arc::new(bitmaps);
     let (sender, receiver) = mpsc::channel();
@@ -91,12 +91,12 @@ fn main() {
                 if index_2 <= index_1 {
                     continue;
                 }
-                let (bitmap_1, bitmap_2) = (&bitmaps_arc_clone[index_1], &bitmaps_arc_clone[index_2]);
+                let (bitmap_1, bitmap_2) = (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
                 let intersection_size = bitmap_1.intersection_len(bitmap_2);
                 // |A| + |B| - 2 * |A and B|
                 distances.push(bitmap_1.len() + bitmap_2.len() - (2 * intersection_size));
             }
-            sender_clone.send(distances).unwrap();
+            sender_clone.send((distances, bitmaps_arc_clone[index_1].1.clone(), bitmaps_arc_clone[index_1].2)).unwrap();
         })
     }
     drop(sender);
@@ -104,7 +104,7 @@ fn main() {
     for distances in receiver {
         all_distances.push(distances);
     }
-    all_distances.sort_by_key(|x| x.len());
+    all_distances.sort_by_key(|x| Reverse(x.0.len()));
     
     dump_data_to_file(bincode::serialize(&all_distances).unwrap(), output_file_path).unwrap();
 }
