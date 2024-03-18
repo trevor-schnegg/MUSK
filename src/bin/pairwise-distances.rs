@@ -9,10 +9,7 @@ use std::path::Path;
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
-fn create_bitmap(
-    files: &str,
-    kmer_length: usize,
-) -> RoaringBitmap {
+fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -43,7 +40,7 @@ struct Args {
     thread_number: usize,
 
     #[arg()]
-    /// Length of k-mer to use in the database
+    /// Location to output the serialzed distances
     output_file: String,
 
     #[arg()]
@@ -91,12 +88,19 @@ fn main() {
                 if index_2 <= index_1 {
                     continue;
                 }
-                let (bitmap_1, bitmap_2) = (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
+                let (bitmap_1, bitmap_2) =
+                    (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
                 let intersection_size = bitmap_1.intersection_len(bitmap_2);
                 // |A| + |B| - 2 * |A and B|
                 distances.push(bitmap_1.len() + bitmap_2.len() - (2 * intersection_size));
             }
-            sender_clone.send((distances, bitmaps_arc_clone[index_1].1.clone(), bitmaps_arc_clone[index_1].2)).unwrap();
+            sender_clone
+                .send((
+                    distances,
+                    bitmaps_arc_clone[index_1].1.clone(),
+                    bitmaps_arc_clone[index_1].2,
+                ))
+                .unwrap();
         })
     }
     drop(sender);
@@ -105,6 +109,10 @@ fn main() {
         all_distances.push(distances);
     }
     all_distances.sort_by_key(|x| Reverse(x.0.len()));
-    
-    dump_data_to_file(bincode::serialize(&all_distances).unwrap(), output_file_path).unwrap();
+
+    dump_data_to_file(
+        bincode::serialize(&all_distances).unwrap(),
+        output_file_path,
+    )
+    .unwrap();
 }

@@ -1,6 +1,7 @@
 use crate::big_exp_float::BigExpFloat;
 use crate::binomial_sf::sf;
 use crate::consts::Consts;
+use crate::io::load_data_from_file;
 use crate::kmer_iter::KmerIter;
 use bio::io::fasta::Record;
 use bit_iter::BitIter;
@@ -8,8 +9,6 @@ use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
@@ -35,14 +34,7 @@ impl Database<u16> {
     }
 
     pub fn load(file: &Path) -> Self {
-        let mut f =
-            File::open(file).expect(&*format!("could not open database file at {:?}", file));
-        let mut buf: Vec<u8> = vec![];
-        f.read_to_end(&mut buf).unwrap();
-        bincode::deserialize(&*buf).expect(&*format!(
-            "could not deserialize database file at {:?}",
-            file
-        ))
+        load_data_from_file::<Self>(file)
     }
 
     pub fn insert_record(&mut self, record: Record) -> () {

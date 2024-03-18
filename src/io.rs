@@ -1,9 +1,12 @@
 use log::{error, warn};
+use serde::Deserialize;
+use std::any::type_name;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::{io, vec};
+use std::io::Read;
 
 pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
     let open_file =
@@ -19,7 +22,10 @@ pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
                     split_line[1].parse::<u32>().unwrap(),
                 ) {
                     warn!("key string '{}' was present multiple times", split_line[0]);
-                    warn!("old tax id was '{}', updating to '{}' - make sure this is intentional", taxid, split_line[1]);
+                    warn!(
+                        "old tax id was '{}', updating to '{}' - make sure this is intentional",
+                        taxid, split_line[1]
+                    );
                 }
             }
             Err(error) => {
@@ -70,4 +76,18 @@ pub fn load_taxid2files(taxid2files: &Path) -> HashMap<u32, Vec<String>> {
 pub fn dump_data_to_file(data: Vec<u8>, file: &Path) -> io::Result<()> {
     let mut f = File::create(file).expect(&*format!("Could not create file {:?}", file));
     f.write_all(&*data)
+}
+
+pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {
+    let mut f = File::open(path).expect(&*format!(
+        "could not open file at {:?}",
+        path
+    ));
+    let mut buf: Vec<u8> = vec![];
+    f.read_to_end(&mut buf).unwrap();
+    bincode::deserialize(&*buf).expect(&*format!(
+        "failed to deserialize data at {:?} into {}",
+        path,
+        type_name::<T>()
+    ))
 }

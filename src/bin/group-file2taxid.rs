@@ -40,8 +40,7 @@ fn create_bitmaps(
     bitmaps
 }
 
-/// Creates a file to tax id mapping where files with the same tax id are grouped
-/// together if their k-mer spectra are similar enough.
+/// Creates a matrix of (hamming) distances between bitmaps
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -67,9 +66,9 @@ fn main() {
     let file2taxid_path = Path::new(&args.taxid2file);
 
     info!("loading file2taxid at {}", args.taxid2file);
-    let file2taxid = load_taxid2files(file2taxid_path);
+    let taxid2files = load_taxid2files(file2taxid_path);
     info!("file2taxid loaded! exploring files with the same tax id");
-    for (taxid, files) in file2taxid {
+    for (taxid, files) in taxid2files {
         if files.len() == 1 {
             println!("{}\t{}", files[0], taxid);
             continue;
