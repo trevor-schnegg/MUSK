@@ -18,5 +18,5 @@ rand = "*"
 bit-iter = "*"
 approx = "*"
 taxonomy = "*"
-roaring = "*"
+roaring = { version = "*", features = ["serde"]}
 threadpool = "*"

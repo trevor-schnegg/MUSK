@@ -65,6 +65,8 @@ fn main() {
     let args = Args::parse();
     let distances_file = Path::new(&args.distances);
     let output_file_path = Path::new(&args.output_file);
+    let random_output_file = args.output_file.clone() + ".random";
+    let random_output_file_path = Path::new(&random_output_file);
 
     info!("loading distances at {}", args.distances);
     let mut distances = load_data_from_file::<Vec<(Vec<u64>, String, u32)>>(distances_file);
@@ -100,13 +102,23 @@ fn main() {
         generic_average_hamming_distance.0, generic_average_hamming_distance.1
     );
 
-    let data_to_output = ordering
+    let ordering_output = ordering
         .into_iter()
         .map(|x| (distances[x].1.clone(), distances[x].2))
         .collect::<Vec<(String, u32)>>();
     dump_data_to_file(
-        bincode::serialize(&data_to_output).unwrap(),
+        bincode::serialize(&ordering_output).unwrap(),
         output_file_path,
+    )
+    .unwrap();
+
+    let random_ordering_output = generic_ordering
+        .into_iter()
+        .map(|x| (distances[x].1.clone(), distances[x].2))
+        .collect::<Vec<(String, u32)>>();
+    dump_data_to_file(
+        bincode::serialize(&random_ordering_output).unwrap(),
+        random_output_file_path, 
     )
     .unwrap();
 }
