@@ -8,6 +8,13 @@ use std::path::Path;
 use std::{io, vec};
 use std::io::Read;
 
+pub fn split_string_to_taxid(line: String) -> (String, u32) {
+    let split_line = line.split("\t").collect::<Vec<&str>>();
+    let file_path = split_line[0].to_string();
+    let taxid = split_line[1].parse::<u32>().unwrap();
+    (file_path, taxid)
+}
+
 pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
     let open_file =
         File::open(string2taxid).expect(&*format!("could not read tsv at {:?}", string2taxid));
@@ -16,15 +23,12 @@ pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
     for (line_number, line) in reader.enumerate() {
         match line {
             Ok(line) => {
-                let split_line = line.split("\t").collect::<Vec<&str>>();
-                if let Some(taxid) = string2taxid.insert(
-                    split_line[0].to_string(),
-                    split_line[1].parse::<u32>().unwrap(),
-                ) {
-                    warn!("key string '{}' was present multiple times", split_line[0]);
+                let (file_path, taxid) = split_string_to_taxid(line);
+                if let Some(old_taxid) = string2taxid.insert(file_path.clone(), taxid) {
+                    warn!("key string '{}' was present multiple times", file_path);
                     warn!(
                         "old tax id was '{}', updating to '{}' - make sure this is intentional",
-                        taxid, split_line[1]
+                        old_taxid, taxid 
                     );
                 }
             }
@@ -41,22 +45,21 @@ pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
     string2taxid
 }
 
-pub fn load_taxid2files(taxid2files: &Path) -> HashMap<u32, Vec<String>> {
+pub fn load_taxid2files(file2taxid: &Path) -> HashMap<u32, Vec<String>> {
     let open_file =
-        File::open(taxid2files).expect(&*format!("could not read tsv at {:?}", taxid2files));
+        File::open(file2taxid).expect(&*format!("could not read tsv at {:?}", file2taxid));
     let reader = BufReader::new(open_file).lines();
     let mut taxid2files = HashMap::new();
     for (line_number, line) in reader.enumerate() {
         match line {
             Ok(line) => {
-                let split_line = line.split("\t").collect::<Vec<&str>>();
-                let taxid = split_line[0].parse::<u32>().unwrap();
+                let (file_path, taxid) = split_string_to_taxid(line);
                 match taxid2files.get_mut(&taxid) {
                     None => {
-                        taxid2files.insert(taxid, vec![split_line[1].to_string()]);
+                        taxid2files.insert(taxid, vec![file_path]);
                     }
                     Some(vector) => {
-                        vector.push(split_line[1].to_string());
+                        vector.push(file_path);
                     }
                 }
             }

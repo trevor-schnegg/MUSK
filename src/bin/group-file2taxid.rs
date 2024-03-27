@@ -55,7 +55,7 @@ struct Args {
 
     #[arg()]
     /// the file2taxid file
-    taxid2file: String,
+    file2taxid: String,
 }
 
 fn main() {
@@ -63,9 +63,9 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let file2taxid_path = Path::new(&args.taxid2file);
+    let file2taxid_path = Path::new(&args.file2taxid);
 
-    info!("loading file2taxid at {}", args.taxid2file);
+    info!("loading file2taxid at {}", args.file2taxid);
     let taxid2files = load_taxid2files(file2taxid_path);
     info!("file2taxid loaded! exploring files with the same tax id");
     for (taxid, files) in taxid2files {

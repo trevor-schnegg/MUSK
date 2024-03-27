@@ -5,7 +5,7 @@ use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
 use std::path::Path;
 use taxonomy::{ncbi, TaxRank, Taxonomy};
 
-/// Prints to stdout a map from tax id to file name (from the given reference location)
+/// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -16,11 +16,11 @@ struct Args {
 
     #[arg()]
     /// Directory with fasta files to create reference from
-    reference_loc: String,
+    reference_location: String,
 
     #[arg()]
     /// Directory containing names.dmp and nodes.dmp
-    taxonomy_dir: String,
+    taxonomy_directory: String,
 }
 
 fn main() {
@@ -28,18 +28,18 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let reference_loc = Path::new(&args.reference_loc);
+    let reference_loc = Path::new(&args.reference_location);
 
     info!("reading accession2taxid at {}", args.accession2taxid);
     let accession2taxid = load_string2taxid(Path::new(&args.accession2taxid));
     info!(
         "accession2taxid loaded! reading taxonomy at {}",
-        args.taxonomy_dir
+        args.taxonomy_directory
     );
-    let taxonomy = ncbi::load(Path::new(&args.taxonomy_dir)).unwrap();
+    let taxonomy = ncbi::load(Path::new(&args.taxonomy_directory)).unwrap();
     info!(
         "taxonomy read! looping through sequences at {}",
-        args.reference_loc
+        args.reference_location
     );
     let mut fasta_files = get_fasta_files(reference_loc).into_iter().enumerate();
     while let Some((i, file)) = fasta_files.next() {
@@ -48,13 +48,13 @@ fn main() {
         }
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         let first_record = record_iter.next().unwrap().unwrap();
-        let mut taxid = *accession2taxid.get(first_record.id()).unwrap();
+        let mut taxid = accession2taxid[first_record.id()];
         match taxonomy.parent_at_rank(&*taxid.to_string(), TaxRank::Species) {
             Ok(Some(x)) => {
                 taxid = x.0.parse().unwrap();
             }
             _ => {}
         }
-        println!("{}\t{}", taxid, file);
+        println!("{}\t{}", file, taxid);
     }
 }

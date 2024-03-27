@@ -45,7 +45,7 @@ struct Args {
 
     #[arg()]
     /// the file2taxid file
-    files2taxid: String,
+    file2taxid: String,
 }
 
 fn main() {
@@ -53,10 +53,10 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let file2taxid_path = Path::new(&args.files2taxid);
+    let file2taxid_path = Path::new(&args.file2taxid);
     let output_file_path = Path::new(&args.output_file);
 
-    info!("loading files2taxid at {}", args.files2taxid);
+    info!("loading files2taxid at {}", args.file2taxid);
     let file2taxid = load_string2taxid(file2taxid_path);
     info!("creating bitmaps for each group...");
     let mut bitmaps = vec![];
