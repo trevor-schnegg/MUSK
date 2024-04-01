@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
@@ -107,8 +107,15 @@ fn main() {
     drop(bitmaps_arc);
     for distances in receiver {
         all_distances.push(distances);
+
+        if all_distances.len() % 1000 == 0 {
+            debug!("completed {} sequences", all_distances.len());
+        }
     }
+
+    info!("all distances computed! sorting...");
     all_distances.sort_by_key(|x| Reverse(x.0.len()));
+    info!("sorting completed! outputting to file...");
 
     dump_data_to_file(
         bincode::serialize(&all_distances).unwrap(),
