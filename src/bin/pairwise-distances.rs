@@ -3,14 +3,14 @@ use log::{debug, info};
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use roaring::RoaringBitmap;
 use std::cmp::Reverse;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
-fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
-    let mut bitmap = RoaringBitmap::new();
+fn create_bit_vector(files: &str, kmer_length: usize) -> Vec<u32> {
+    let mut bitset = HashSet::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
@@ -18,11 +18,41 @@ fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                bitmap.insert(kmer as u32);
+                bitset.insert(kmer as u32);
             }
         }
     }
-    bitmap
+    let mut bit_vector = bitset.into_iter().collect::<Vec<u32>>();
+    bit_vector.sort();
+    bit_vector
+}
+
+fn intersect(vector_1: &Vec<u32>, vector_2: &Vec<u32>) -> u32 {
+    let mut intersect_size = 0;
+    let (mut index_1, mut index_2) = (0_usize, 0_usize);
+    while index_1 < vector_1.len() && index_2 < vector_2.len() {
+        let (current_1, current_2) = (vector_1[index_1], vector_2[index_2]);
+        if current_1 < current_2 {
+            match vector_1[index_1..].binary_search(&current_2) {
+                Ok(index) => {
+                    intersect_size += 1;
+                    index_1 += index + 1;
+                },
+                Err(index) => {index_1 += index},
+            }
+        } else if current_2 < current_1 {
+            match vector_2[index_2..].binary_search(&current_1) {
+                Ok(index) => {
+                    intersect_size += 1;
+                    index_2 += index + 1;
+                },
+                Err(index) => {index_2 += index},
+            }
+        } else {
+            panic!("impossible case reached");
+        }
+    }
+    intersect_size
 }
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
@@ -59,28 +89,28 @@ fn main() {
     info!("loading files2taxid at {}", args.file2taxid);
     let file2taxid = load_string2taxid(file2taxid_path);
     info!("creating bitmaps for each group...");
-    let mut bitmaps = vec![];
+    let mut bit_vectors = vec![];
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(args.thread_number);
     for (files, taxid) in file2taxid {
         let sender_clone = sender.clone();
         pool.execute(move || {
-            let bitmap = create_bitmap(&*files, args.kmer_length);
+            let bitmap = create_bit_vector(&*files, args.kmer_length);
             sender_clone.send((bitmap, files, taxid)).unwrap();
         })
     }
     drop(sender);
     for triple in receiver {
-        bitmaps.push(triple);
+        bit_vectors.push(triple);
     }
 
     info!("bitmaps computed, computing pairwise distances...");
 
     let mut all_distances = vec![];
-    let bitmaps_arc = Arc::new(bitmaps);
+    let bitsets_arc = Arc::new(bit_vectors);
     let (sender, receiver) = mpsc::channel();
-    for index_1 in 0..bitmaps_arc.len() {
-        let bitmaps_arc_clone = bitmaps_arc.clone();
+    for index_1 in 0..bitsets_arc.len() {
+        let bitmaps_arc_clone = bitsets_arc.clone();
         let sender_clone = sender.clone();
         pool.execute(move || {
             let mut distances = vec![];
@@ -88,11 +118,11 @@ fn main() {
                 if index_2 <= index_1 {
                     continue;
                 }
-                let (bitmap_1, bitmap_2) =
+                let (bitset_1, bitset_2) =
                     (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
-                let intersection_size = bitmap_1.intersection_len(bitmap_2);
+                let intersection_size = intersect(bitset_1, bitset_2);
                 // |A| + |B| - 2 * |A and B|
-                distances.push(bitmap_1.len() + bitmap_2.len() - (2 * intersection_size));
+                distances.push(bitset_1.len() as u32 + bitset_2.len() as u32 - (2 * intersection_size));
             }
             sender_clone
                 .send((
@@ -104,7 +134,7 @@ fn main() {
         })
     }
     drop(sender);
-    drop(bitmaps_arc);
+    drop(bitsets_arc);
     for distances in receiver {
         all_distances.push(distances);
 
