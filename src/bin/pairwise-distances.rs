@@ -3,7 +3,7 @@ use log::{debug, info};
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use std::cmp::{min, Reverse};
+use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
@@ -28,21 +28,30 @@ fn create_bit_vector(files: &str, kmer_length: usize) -> Vec<u32> {
 }
 
 fn geometric_search(sorted_vector: &[u32], value: u32) -> Result<usize, usize> {
-    let mut end = 0;
-    while sorted_vector[end] < value && end < sorted_vector.len() - 1 {
-        end = min(if end == 0 { 1 } else { end << 1 }, sorted_vector.len() - 1);
-    }
-    if sorted_vector[end] == value {
-        Ok(end)
-    } else {
-        match sorted_vector[end / 2..=end].binary_search(&value) {
-            Ok(index) => Ok((end / 2) + index),
-            Err(index) => Err((end / 2) + index),
+    let mut current_index = 0;
+    let mut last_index = 0;
+    while sorted_vector[current_index] < value {
+        last_index = current_index;
+        current_index = if current_index == 0 {1} else {current_index << 1};
+        if current_index >= sorted_vector.len() {
+            current_index = sorted_vector.len();
+            break
         }
+    }
+    let result = if current_index == sorted_vector.len() {
+        sorted_vector[last_index..].binary_search(&value)
+    } else if sorted_vector[current_index] == value {
+        return Ok(current_index)
+    } else {
+        sorted_vector[last_index..current_index].binary_search(&value)
+    };
+    match result {
+        Ok(index) => {Ok(last_index + index)},
+        Err(index) => {Err(last_index + index)},
     }
 }
 
-fn intersect(vector_1: &Vec<u32>, vector_2: &Vec<u32>) -> u32 {
+fn intersect_size(vector_1: &Vec<u32>, vector_2: &Vec<u32>) -> u32 {
     let mut intersect_size = 0;
     let (mut index_1, mut index_2) = (0_usize, 0_usize);
     while index_1 < vector_1.len() && index_2 < vector_2.len() {
@@ -135,7 +144,7 @@ fn main() {
                 }
                 let (bitset_1, bitset_2) =
                     (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
-                let intersection_size = intersect(bitset_1, bitset_2);
+                let intersection_size = intersect_size(bitset_1, bitset_2);
                 // |A| + |B| - 2 * |A and B|
                 distances
                     .push(bitset_1.len() as u32 + bitset_2.len() as u32 - (2 * intersection_size));
