@@ -79,7 +79,7 @@ fn main() {
                 Ok(tree_node) => {
                     constraints_inserted += 1;
                     pq_tree = tree_node;
-                },
+                }
                 Err(x) => {
                     debug!("failed on kmer {}", kmer);
                     debug!("{} actual constraints inserted", constraints_inserted);

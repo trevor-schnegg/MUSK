@@ -118,7 +118,7 @@ fn main() {
         .collect::<Vec<(String, u32)>>();
     dump_data_to_file(
         bincode::serialize(&random_ordering_output).unwrap(),
-        random_output_file_path, 
+        random_output_file_path,
     )
     .unwrap();
 }

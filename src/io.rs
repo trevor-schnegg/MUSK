@@ -3,10 +3,10 @@ use serde::Deserialize;
 use std::any::type_name;
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::Read;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::{io, vec};
-use std::io::Read;
 
 pub fn split_string_to_taxid(line: String) -> (String, u32) {
     let split_line = line.split("\t").collect::<Vec<&str>>();
@@ -28,7 +28,7 @@ pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
                     warn!("key string '{}' was present multiple times", file_path);
                     warn!(
                         "old tax id was '{}', updating to '{}' - make sure this is intentional",
-                        old_taxid, taxid 
+                        old_taxid, taxid
                     );
                 }
             }
@@ -82,10 +82,7 @@ pub fn dump_data_to_file(data: Vec<u8>, file: &Path) -> io::Result<()> {
 }
 
 pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {
-    let mut f = File::open(path).expect(&*format!(
-        "could not open file at {:?}",
-        path
-    ));
+    let mut f = File::open(path).expect(&*format!("could not open file at {:?}", path));
     let mut buf: Vec<u8> = vec![];
     f.read_to_end(&mut buf).unwrap();
     bincode::deserialize(&*buf).expect(&*format!(

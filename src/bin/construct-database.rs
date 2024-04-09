@@ -46,7 +46,6 @@ struct Args {
     #[arg()]
     /// Location to output the serialzed distances
     output_file: String,
-
 }
 
 fn main() {
@@ -86,9 +85,5 @@ fn main() {
         }
     }
     info!("database constructed! dumping to output file...");
-    dump_data_to_file(
-        bincode::serialize(&database).unwrap(),
-        output_file_path,
-    )
-    .unwrap();
+    dump_data_to_file(bincode::serialize(&database).unwrap(), output_file_path).unwrap();
 }

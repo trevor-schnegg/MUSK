@@ -1,8 +1,12 @@
 use clap::Parser;
+use log::info;
+use musk::{
+    io::{load_data_from_file, load_string2taxid},
+    kmer_iter::KmerIter,
+    utility::get_fasta_iterator_of_file,
+};
 use rand::distributions::{Distribution, Uniform};
 use std::{collections::HashMap, path::Path};
-use musk::{io::{load_data_from_file, load_string2taxid}, kmer_iter::KmerIter, utility::get_fasta_iterator_of_file};
-use log::info;
 
 pub fn push_index(bitset: &mut Vec<u8>, bit_to_set: usize) -> () {
     let (byte, bit) = (bit_to_set / 8, bit_to_set % 8);
@@ -39,17 +43,21 @@ fn main() {
     let ordering_path = Path::new(&args.file2taxid);
     let total_kmers = 4_usize.pow(args.kmer_length as u32);
 
-    let ordering = {if args.is_ordering {
-        info!("deserializing ordering from {}", args.file2taxid);
-        let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_path);
-        info!("ordering deserialzed! creating subset...");
-        ordering
-    } else {
-        info!("loading file2taxid from {}", args.file2taxid);
-        let ordering = load_string2taxid(ordering_path).into_iter().collect::<Vec<(String, u32)>>();
-        info!("file loaded! creating subset...");
-        ordering
-    }};
+    let ordering = {
+        if args.is_ordering {
+            info!("deserializing ordering from {}", args.file2taxid);
+            let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_path);
+            info!("ordering deserialzed! creating subset...");
+            ordering
+        } else {
+            info!("loading file2taxid from {}", args.file2taxid);
+            let ordering = load_string2taxid(ordering_path)
+                .into_iter()
+                .collect::<Vec<(String, u32)>>();
+            info!("file loaded! creating subset...");
+            ordering
+        }
+    };
 
     let mut subset = HashMap::new();
     let subset_size = 4_usize.pow(9);
@@ -58,8 +66,12 @@ fn main() {
     while subset.len() < subset_size {
         let kmer = uniform_distribution.sample(&mut rng);
         match subset.get(&kmer) {
-            None => {subset.insert(kmer, vec![0_u8; (ordering.len() / 8) + 1]);},
-            Some(_) => {continue;},
+            None => {
+                subset.insert(kmer, vec![0_u8; (ordering.len() / 8) + 1]);
+            }
+            Some(_) => {
+                continue;
+            }
         }
     }
 
@@ -69,8 +81,10 @@ fn main() {
             let kmer_iterator = KmerIter::from(record.seq(), args.kmer_length);
             for kmer in kmer_iterator {
                 match subset.get_mut(&kmer) {
-                    None => {continue;},
-                    Some(bit_vector) => {push_index(bit_vector, index)},
+                    None => {
+                        continue;
+                    }
+                    Some(bit_vector) => push_index(bit_vector, index),
                 }
             }
         }
