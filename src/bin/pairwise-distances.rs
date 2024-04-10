@@ -4,9 +4,9 @@ use musk::intersect::IntersectIterator;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
 fn create_bit_vector(files: &str, kmer_length: usize) -> Vec<u32> {
@@ -79,28 +79,52 @@ fn main() {
     info!("bitmaps computed, computing pairwise distances...");
 
     let mut all_distances = vec![vec![]; bit_vectors.len()];
-    for index_1 in 0..bit_vectors.len() {
-        for index_2 in 0..bit_vectors.len() {
-            if index_2 <= index_1 {
-                continue;
+    let (sender, receiver) = mpsc::channel();
+    let bit_vectors_arc = Arc::new(bit_vectors);
+    for index_1 in 0..bit_vectors_arc.len() {
+        let sender_clone = sender.clone();
+        let bit_vectors_arc_clone = bit_vectors_arc.clone();
+        pool.execute(move || {
+            let mut distances = vec![];
+            for index_2 in 0..bit_vectors_arc_clone.len() {
+                if index_2 <= index_1 {
+                    continue;
+                }
+                let distance = IntersectIterator::from(
+                    &bit_vectors_arc_clone[index_1].0,
+                    &bit_vectors_arc_clone[index_2].0,
+                )
+                .count() as u32;
+                distances.push(distance);
             }
-            let distance =
-                IntersectIterator::from(&bit_vectors[index_1].0, &bit_vectors[index_2].0).count();
-            all_distances[index_1].push(distance);
-        }
+            sender_clone
+                .send((
+                    index_1,
+                    distances,
+                    bit_vectors_arc_clone[index_1].1.clone(),
+                    bit_vectors_arc_clone[index_1].2,
+                ))
+                .unwrap();
+        })
+    }
+    drop(sender);
+    let mut map = HashMap::new();
+    for (index, distances, file, taxid) in receiver {
+        all_distances[index] = distances;
+        map.insert(index, (file, taxid));
     }
 
-    let data_dump = (
-        bit_vectors
-            .into_iter()
-            .map(|(_, file, taxid)| (file, taxid))
-            .collect::<Vec<(String, u32)>>(),
-        all_distances,
-    );
+    let data_dump = all_distances
+        .into_iter()
+        .enumerate()
+        .map(|(index, distances)| {
+            (
+                distances,
+                map.get(&index).unwrap().0.clone(),
+                map.get(&index).unwrap().1,
+            )
+        })
+        .collect::<Vec<(Vec<u32>, String, u32)>>();
 
-    dump_data_to_file(
-        bincode::serialize(&data_dump).unwrap(),
-        output_file_path,
-    )
-    .unwrap();
+    dump_data_to_file(bincode::serialize(&data_dump).unwrap(), output_file_path).unwrap();
 }
