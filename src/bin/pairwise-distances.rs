@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 use musk::intersect::IntersectIterator;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
@@ -112,6 +112,9 @@ fn main() {
     for (index, distances, file, taxid) in receiver {
         all_distances[index] = distances;
         map.insert(index, (file, taxid));
+        if map.len() % 1000 == 0 {
+            debug!("done with {} sequences", map.len());
+        }
     }
 
     let data_dump = all_distances
