@@ -1,5 +1,6 @@
 use clap::Parser;
 use log::{debug, info};
+use musk::intersect::IntersectIterator;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
@@ -25,58 +26,6 @@ fn create_bit_vector(files: &str, kmer_length: usize) -> Vec<u32> {
     let mut bit_vector = bitset.into_iter().collect::<Vec<u32>>();
     bit_vector.sort();
     bit_vector
-}
-
-fn geometric_search(sorted_vector: &[u32], value: u32) -> Result<usize, usize> {
-    let mut current_index = 0;
-    let mut last_index = 0;
-    while sorted_vector[current_index] < value {
-        last_index = current_index;
-        current_index = if current_index == 0 {1} else {current_index << 1};
-        if current_index >= sorted_vector.len() {
-            current_index = sorted_vector.len();
-            break
-        }
-    }
-    let result = if current_index == sorted_vector.len() {
-        sorted_vector[last_index..].binary_search(&value)
-    } else if sorted_vector[current_index] == value {
-        return Ok(current_index)
-    } else {
-        sorted_vector[last_index..current_index].binary_search(&value)
-    };
-    match result {
-        Ok(index) => {Ok(last_index + index)},
-        Err(index) => {Err(last_index + index)},
-    }
-}
-
-fn intersect_size(vector_1: &Vec<u32>, vector_2: &Vec<u32>) -> u32 {
-    let mut intersect_size = 0;
-    let (mut index_1, mut index_2) = (0_usize, 0_usize);
-    while index_1 < vector_1.len() && index_2 < vector_2.len() {
-        let (current_1, current_2) = (vector_1[index_1], vector_2[index_2]);
-        if current_1 < current_2 {
-            match geometric_search(&vector_1[index_1..], current_2) {
-                Ok(index) => {
-                    intersect_size += 1;
-                    index_1 += index + 1;
-                }
-                Err(index) => index_1 += index,
-            }
-        } else if current_2 < current_1 {
-            match geometric_search(&vector_2[index_2..], current_1) {
-                Ok(index) => {
-                    intersect_size += 1;
-                    index_2 += index + 1;
-                }
-                Err(index) => index_2 += index,
-            }
-        } else {
-            panic!("impossible case reached");
-        }
-    }
-    intersect_size
 }
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
@@ -144,7 +93,8 @@ fn main() {
                 }
                 let (bitset_1, bitset_2) =
                     (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
-                let intersection_size = intersect_size(bitset_1, bitset_2);
+                let intersection_size =
+                    IntersectIterator::from(&bitset_1, &bitset_2).count() as u32;
                 // |A| + |B| - 2 * |A and B|
                 distances
                     .push(bitset_1.len() as u32 + bitset_2.len() as u32 - (2 * intersection_size));
