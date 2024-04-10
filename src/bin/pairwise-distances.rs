@@ -1,13 +1,12 @@
 use clap::Parser;
-use log::{debug, info};
+use log::info;
 use musk::intersect::IntersectIterator;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 use threadpool::ThreadPool;
 
 fn create_bit_vector(files: &str, kmer_length: usize) -> Vec<u32> {
@@ -79,51 +78,28 @@ fn main() {
 
     info!("bitmaps computed, computing pairwise distances...");
 
-    let mut all_distances = vec![];
-    let bitsets_arc = Arc::new(bit_vectors);
-    let (sender, receiver) = mpsc::channel();
-    for index_1 in 0..bitsets_arc.len() {
-        let bitmaps_arc_clone = bitsets_arc.clone();
-        let sender_clone = sender.clone();
-        pool.execute(move || {
-            let mut distances = vec![];
-            for index_2 in 0..bitmaps_arc_clone.len() {
-                if index_2 <= index_1 {
-                    continue;
-                }
-                let (bitset_1, bitset_2) =
-                    (&bitmaps_arc_clone[index_1].0, &bitmaps_arc_clone[index_2].0);
-                let intersection_size =
-                    IntersectIterator::from(&bitset_1, &bitset_2).count() as u32;
-                // |A| + |B| - 2 * |A and B|
-                distances
-                    .push(bitset_1.len() as u32 + bitset_2.len() as u32 - (2 * intersection_size));
+    let mut all_distances = vec![vec![]; bit_vectors.len()];
+    for index_1 in 0..bit_vectors.len() {
+        for index_2 in 0..bit_vectors.len() {
+            if index_2 <= index_1 {
+                continue;
             }
-            sender_clone
-                .send((
-                    distances,
-                    bitmaps_arc_clone[index_1].1.clone(),
-                    bitmaps_arc_clone[index_1].2,
-                ))
-                .unwrap();
-        })
-    }
-    drop(sender);
-    drop(bitsets_arc);
-    for distances in receiver {
-        all_distances.push(distances);
-
-        if all_distances.len() % 1000 == 0 {
-            debug!("completed {} sequences", all_distances.len());
+            let distance =
+                IntersectIterator::from(&bit_vectors[index_1].0, &bit_vectors[index_2].0).count();
+            all_distances[index_1].push(distance);
         }
     }
 
-    info!("all distances computed! sorting...");
-    all_distances.sort_by_key(|x| Reverse(x.0.len()));
-    info!("sorting completed! outputting to file...");
+    let data_dump = (
+        bit_vectors
+            .into_iter()
+            .map(|(_, file, taxid)| (file, taxid))
+            .collect::<Vec<(String, u32)>>(),
+        all_distances,
+    );
 
     dump_data_to_file(
-        bincode::serialize(&all_distances).unwrap(),
+        bincode::serialize(&data_dump).unwrap(),
         output_file_path,
     )
     .unwrap();
