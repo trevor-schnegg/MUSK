@@ -21,3 +21,4 @@ taxonomy = "*"
 roaring = { version = "*", features = ["serde"]}
 threadpool = "*"
 pq-tree = "*"
+itertools = "*"

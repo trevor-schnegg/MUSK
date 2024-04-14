@@ -5,7 +5,7 @@ pub mod database;
 pub mod decode;
 pub mod explore;
 pub mod generator;
-pub mod intersect;
 pub mod io;
 pub mod kmer_iter;
+pub mod sorted_vector_sets;
 pub mod utility;

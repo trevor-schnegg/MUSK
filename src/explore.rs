@@ -1,57 +1,61 @@
-use roaring::RoaringBitmap;
-use std::cmp::min;
+use itertools::Itertools;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
+use crate::sorted_vector_sets::IntersectIterator;
+
 pub fn connected_components(
-    bit_vectors: Vec<RoaringBitmap>,
+    sorted_vector_sets: Vec<Vec<u32>>,
     minimum_similarity: f64,
     thread_number: usize,
 ) -> Vec<Vec<usize>> {
-    let graph = create_graph(bit_vectors, minimum_similarity, thread_number);
+    let graph = create_graph(sorted_vector_sets, minimum_similarity, thread_number);
     let components = bfs(graph);
     components
 }
 
 fn create_graph(
-    bitmaps: Vec<RoaringBitmap>,
+    sorted_vector_sets: Vec<Vec<u32>>,
     minimum_similarity: f64,
     thread_number: usize,
 ) -> Vec<Vec<usize>> {
-    let mut graph = vec![vec![]; bitmaps.len()];
-    let bitmaps_arc = Arc::new(bitmaps);
+    let mut graph = vec![vec![]; sorted_vector_sets.len()];
+    let sorted_vector_sets_arc = Arc::new(sorted_vector_sets);
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(thread_number);
-    for i1 in 0..bitmaps_arc.len() {
+    for index_1 in 0..sorted_vector_sets_arc.len() {
         let sender_clone = sender.clone();
-        let bitmaps_arc_clone = bitmaps_arc.clone();
+        let sorted_vector_sets_arc_clone = sorted_vector_sets_arc.clone();
         pool.execute(move || {
-            for i2 in 0..bitmaps_arc_clone.len() {
-                if i2 <= i1 {
+            for index_2 in 0..sorted_vector_sets_arc_clone.len() {
+                if index_2 <= index_1 {
                     continue;
                 }
-                let (bit_vector_1, bit_vector_2) = (&bitmaps_arc_clone[i1], &bitmaps_arc_clone[i2]);
-                let intersect_size = intersect(bit_vector_1, bit_vector_2);
-                let minimum_containment =
-                    intersect_size as f64 / min(bit_vector_1.len(), bit_vector_2.len()) as f64;
-                if minimum_containment >= minimum_similarity {
-                    sender_clone.send((i1, i2)).unwrap();
+                let (bit_vector_1, bit_vector_2) = (
+                    &sorted_vector_sets_arc_clone[index_1],
+                    &sorted_vector_sets_arc_clone[index_2],
+                );
+                let intersect_size = IntersectIterator::from(bit_vector_1, bit_vector_2).count();
+                let union_size = vec![bit_vector_1, bit_vector_2]
+                    .into_iter()
+                    .kmerge()
+                    .unique()
+                    .count();
+                let intersection_coverage = intersect_size as f64 / union_size as f64;
+                if intersection_coverage >= minimum_similarity {
+                    sender_clone.send((index_1, index_2)).unwrap();
                 }
             }
         });
     }
     drop(sender);
-    drop(bitmaps_arc);
+    drop(sorted_vector_sets_arc);
     for edge in receiver {
         graph[edge.0].push(edge.1);
         graph[edge.1].push(edge.0);
     }
     graph
-}
-
-fn intersect(vector_1: &RoaringBitmap, vector_2: &RoaringBitmap) -> u64 {
-    vector_1.intersection_len(vector_2)
 }
 
 /// Returns the connected components of all nodes

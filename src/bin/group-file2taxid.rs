@@ -4,40 +4,43 @@ use musk::explore::connected_components;
 use musk::io::load_taxid2files;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
-use roaring::RoaringBitmap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::mpsc;
 use threadpool::ThreadPool;
 
-fn create_bitmaps(
-    files: &Vec<String>,
-    kmer_length: usize,
-    thread_number: usize,
-) -> Vec<RoaringBitmap> {
-    let mut bitmaps = vec![];
+fn create_bitmaps(files: &Vec<String>, kmer_length: usize, thread_number: usize) -> Vec<Vec<u32>> {
+    let mut sorted_vector_sets = vec![];
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(thread_number);
-    for file in files.clone() {
+    for (index, file) in files.iter().enumerate() {
         let sender_clone = sender.clone();
+        let file = file.clone();
         pool.execute(move || {
-            let mut bitmap = RoaringBitmap::new();
+            let mut kmer_set = HashSet::new();
             let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
             while let Some(Ok(record)) = record_iter.next() {
                 if record.seq().len() < kmer_length {
                     continue;
                 }
                 for kmer in KmerIter::from(record.seq(), kmer_length) {
-                    bitmap.insert(kmer as u32);
+                    kmer_set.insert(kmer as u32);
                 }
             }
-            sender_clone.send(bitmap).unwrap();
+            let mut sorted_vector = kmer_set.into_iter().collect::<Vec<u32>>();
+            sorted_vector.sort();
+            sender_clone.send((index, sorted_vector)).unwrap();
         });
     }
     drop(sender);
-    for bitmap in receiver {
-        bitmaps.push(bitmap);
+    for tuple in receiver {
+        sorted_vector_sets.push(tuple);
     }
-    bitmaps
+    sorted_vector_sets.sort_by_key(|(i, _)| *i);
+    sorted_vector_sets
+        .into_iter()
+        .map(|(_, sorted_vector_set)| sorted_vector_set)
+        .collect::<Vec<Vec<u32>>>()
 }
 
 /// Creates a matrix of (hamming) distances between bitmaps
@@ -78,9 +81,9 @@ fn main() {
             taxid,
             files.len()
         );
-        let bitmaps = create_bitmaps(&files, args.kmer_length, args.thread_number);
+        let sorted_vectors = create_bitmaps(&files, args.kmer_length, args.thread_number);
         debug!("hashsets created! performing comparisons...");
-        let connected_components = connected_components(bitmaps, 0.8, args.thread_number);
+        let connected_components = connected_components(sorted_vectors, 0.9, args.thread_number);
         for component in connected_components {
             let mut files_string = String::new();
             for file_index in component {
