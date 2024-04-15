@@ -1,4 +1,4 @@
-use musk::sorted_vector_utilities::{IntersectIterator, UnionIterator};
+use musk::sorted_vector_utilities::{DifferenceIterator, IntersectIterator, UnionIterator};
 // use musk::kmer_iter::KmerIter;
 
 fn main() {
@@ -10,7 +10,10 @@ fn main() {
 
     let vector_1 = vec![1, 2, 3, 6, 13, 15, 18, 22, 40];
     let vector_2 = vec![0, 2, 3, 7, 13, 15, 20, 26, 40];
-    let _intersect_iterator = IntersectIterator::from(&vector_1, &vector_2);
-
-    println!("{:?}", UnionIterator::from(vec![&vector_1, &vector_2]).collect::<Vec<u32>>());
+    println!("vector 1: {:?}", vector_1);
+    println!("vector 2: {:?}", vector_2);
+    println!("");
+    println!("intersection: {:?}", IntersectIterator::from(&vector_1, &vector_2).collect::<Vec<&u32>>());
+    println!("union: {:?}", UnionIterator::from(vec![&vector_1, &vector_2]).collect::<Vec<&u32>>());
+    println!("difference {:?}", DifferenceIterator::from(&vector_1, vec![&vector_2]).collect::<Vec<&u32>>());
 }
