@@ -2,7 +2,7 @@ use clap::Parser;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
-use musk::sorted_vector_sets::IntersectIterator;
+use musk::sorted_vector_utilities::IntersectIterator;
 use musk::utility::get_fasta_iterator_of_file;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

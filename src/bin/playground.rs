@@ -1,4 +1,4 @@
-use musk::sorted_vector_sets::IntersectIterator;
+use musk::sorted_vector_utilities::{IntersectIterator, UnionIterator};
 // use musk::kmer_iter::KmerIter;
 
 fn main() {
@@ -10,8 +10,7 @@ fn main() {
 
     let vector_1 = vec![1, 2, 3, 6, 13, 15, 18, 22, 40];
     let vector_2 = vec![0, 2, 3, 7, 13, 15, 20, 26, 40];
-    let mut intersect_iterator = IntersectIterator::from(&vector_1, &vector_2);
-    while let Some(x) = intersect_iterator.next() {
-        println!("{}", x);
-    }
+    let _intersect_iterator = IntersectIterator::from(&vector_1, &vector_2);
+
+    println!("{:?}", UnionIterator::from(vec![&vector_1, &vector_2]).collect::<Vec<u32>>());
 }

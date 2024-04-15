@@ -1,9 +1,8 @@
-use itertools::Itertools;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
-use crate::sorted_vector_sets::IntersectIterator;
+use crate::sorted_vector_utilities::{IntersectIterator, UnionIterator};
 
 pub fn connected_components(
     sorted_vector_sets: Vec<Vec<u32>>,
@@ -37,11 +36,7 @@ fn create_graph(
                     &sorted_vector_sets_arc_clone[index_2],
                 );
                 let intersect_size = IntersectIterator::from(bit_vector_1, bit_vector_2).count();
-                let union_size = vec![bit_vector_1, bit_vector_2]
-                    .into_iter()
-                    .kmerge()
-                    .unique()
-                    .count();
+                let union_size = UnionIterator::from(vec![bit_vector_1, bit_vector_2]).count();
                 let intersection_coverage = intersect_size as f64 / union_size as f64;
                 if intersection_coverage >= minimum_similarity {
                     sender_clone.send((index_1, index_2)).unwrap();

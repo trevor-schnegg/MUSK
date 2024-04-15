@@ -1,4 +1,36 @@
-use std::slice::Iter;
+use std::{iter::Peekable, slice::Iter};
+use itertools::{Itertools, KMerge};
+
+pub struct UnionIterator<'a> {
+    iterator: Peekable<KMerge<Iter<'a, u32>>>,
+}
+
+impl<'a> UnionIterator<'a> {
+    pub fn from(sorted_vectors: Vec<&'a [u32]>) -> Self {
+        UnionIterator {
+            iterator: sorted_vectors.into_iter().kmerge().peekable(),
+        }
+    }
+}
+
+impl<'a> Iterator for UnionIterator<'a> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = match self.iterator.next() {
+            None => return None,
+            Some(next) => *next,
+        };
+        while let Some(new_next) = self.iterator.peek() {
+            if **new_next == next {
+                self.iterator.next();
+            } else {
+                break;
+            }
+        }
+        Some(next)
+    }
+}
 
 pub struct IntersectIterator<'a> {
     value_1: u32,

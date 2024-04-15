@@ -7,5 +7,5 @@ pub mod explore;
 pub mod generator;
 pub mod io;
 pub mod kmer_iter;
-pub mod sorted_vector_sets;
+pub mod sorted_vector_utilities;
 pub mod utility;
