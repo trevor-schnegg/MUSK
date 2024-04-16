@@ -2,30 +2,187 @@ use clap::Parser;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::kmer_iter::KmerIter;
-use musk::sorted_vector_utilities::IntersectIterator;
+use musk::sorted_vector_utilities::{DifferenceIterator, IntersectIterator, UnionIterator};
 use musk::utility::get_fasta_iterator_of_file;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
 use threadpool::ThreadPool;
 
-fn create_bit_vector(files: &str, kmer_length: usize) -> Vec<u32> {
-    let mut bitset = HashSet::new();
+enum Sequence {
+    One((Vec<u32>, String), u32),
+    Many(Vec<u32>, Vec<(Vec<u32>, String)>, u32),
+}
+
+fn distance(length_1: usize, length_2: usize, intersection_size: usize) -> u32 {
+    (length_1 + length_2 - (2 * intersection_size)) as u32
+}
+
+fn create_bit_vectors(files: &str, kmer_length: usize, taxid: u32) -> Sequence {
+    let mut sorted_kmer_vectors = vec![];
     for file in files.split(",") {
+        let mut kmer_set = HashSet::new();
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                bitset.insert(kmer as u32);
+                kmer_set.insert(kmer as u32);
             }
         }
+        let mut sorted_kmer_vector = kmer_set.into_iter().collect::<Vec<u32>>();
+        sorted_kmer_vector.sort();
+        sorted_kmer_vectors.push((sorted_kmer_vector, file.to_string()));
     }
-    let mut bit_vector = bitset.into_iter().collect::<Vec<u32>>();
-    bit_vector.sort();
-    bit_vector
+    if sorted_kmer_vectors.len() == 1 {
+        Sequence::One(sorted_kmer_vectors[0].clone(), taxid)
+    } else {
+        let union = UnionIterator::from(
+            sorted_kmer_vectors
+                .iter()
+                .map(|vector| &vector.0)
+                .collect::<Vec<&Vec<u32>>>(),
+        )
+        .map(|kmer| *kmer)
+        .collect::<Vec<u32>>();
+        let difference_vectors = sorted_kmer_vectors
+            .into_iter()
+            .map(|(sorted_kmer_vector, file)| {
+                (
+                    DifferenceIterator::from(&union, vec![&sorted_kmer_vector])
+                        .map(|kmer| *kmer)
+                        .collect::<Vec<u32>>(),
+                    file,
+                )
+            })
+            .collect::<Vec<(Vec<u32>, String)>>();
+        Sequence::Many(union, difference_vectors, taxid)
+    }
+}
+
+fn create_file_to_index_map(
+    sequences: &Vec<Sequence>,
+) -> (Vec<(String, u32)>, HashMap<String, usize>) {
+    let files = sequences
+        .into_iter()
+        .map(|sequence| match sequence {
+            Sequence::One((_, file), taxid) => vec![(file.clone(), *taxid)],
+            Sequence::Many(_, files, taxid) => files
+                .into_iter()
+                .map(|(_, file)| (file.clone(), *taxid))
+                .collect::<Vec<(String, u32)>>(),
+        })
+        .flatten()
+        .collect::<Vec<(String, u32)>>();
+    let map = HashMap::from_iter(
+        files
+            .iter()
+            .enumerate()
+            .map(|(index, file)| (file.0.clone(), index)),
+    );
+    (files, map)
+}
+
+fn self_matrix(
+    union: &Vec<u32>,
+    difference_vectors: &Vec<(Vec<u32>, String)>,
+    sender: &Sender<(usize, usize, u32)>,
+    file_to_index: &Arc<HashMap<String, usize>>,
+) -> () {
+    for index_1 in 0..difference_vectors.len() {
+        for index_2 in 0..difference_vectors.len() {
+            if index_2 <= index_1 {
+                continue;
+            }
+            let difference_1 = &difference_vectors[index_1];
+            let difference_2 = &difference_vectors[index_2];
+            let intersection_size =
+                DifferenceIterator::from(union, vec![&difference_1.0, &difference_2.0]).count();
+            let distance = distance(
+                difference_1.0.len(),
+                difference_2.0.len(),
+                intersection_size,
+            );
+            let sequence_index_1 = *file_to_index.get(&difference_1.1).unwrap();
+            let sequence_index_2 = *file_to_index.get(&difference_1.1).unwrap();
+            sender
+                .send((sequence_index_1, sequence_index_2, distance))
+                .unwrap();
+        }
+    }
+}
+
+fn one_to_one(
+    sequence_1: &(Vec<u32>, String),
+    sequence_2: &(Vec<u32>, String),
+    sender: &Sender<(usize, usize, u32)>,
+    file_to_index: &Arc<HashMap<String, usize>>,
+) -> () {
+    let intersection_size = IntersectIterator::from(&sequence_1.0, &sequence_2.0).count();
+    let distance = distance(sequence_1.0.len(), sequence_2.0.len(), intersection_size);
+    let sequence_index_1 = *file_to_index.get(&sequence_1.1).unwrap();
+    let sequence_index_2 = *file_to_index.get(&sequence_2.1).unwrap();
+    sender
+        .send((sequence_index_1, sequence_index_2, distance))
+        .unwrap();
+}
+
+fn many_to_one(
+    union: &Vec<u32>,
+    differences: &Vec<(Vec<u32>, String)>,
+    sequence: &(Vec<u32>, String),
+    sender: &Sender<(usize, usize, u32)>,
+    file_to_index: &Arc<HashMap<String, usize>>,
+) -> () {
+    let intersection = IntersectIterator::from(union, &sequence.0)
+        .map(|kmer| *kmer)
+        .collect::<Vec<u32>>();
+    for difference in differences {
+        let intersection_size =
+            DifferenceIterator::from(&intersection, vec![&difference.0]).count();
+        let distance = distance(
+            union.len() - difference.0.len(),
+            sequence.0.len(),
+            intersection_size,
+        );
+        let sequence_index_1 = *file_to_index.get(&sequence.1).unwrap();
+        let sequence_index_2 = *file_to_index.get(&difference.1).unwrap();
+        sender
+            .send((sequence_index_1, sequence_index_2, distance))
+            .unwrap();
+    }
+}
+
+fn many_to_many(
+    union_1: &Vec<u32>,
+    differences_1: &Vec<(Vec<u32>, String)>,
+    union_2: &Vec<u32>,
+    differences_2: &Vec<(Vec<u32>, String)>,
+    sender: &Sender<(usize, usize, u32)>,
+    file_to_index: &Arc<HashMap<String, usize>>,
+) -> () {
+    let intersection = IntersectIterator::from(union_1, union_2)
+        .map(|kmer| *kmer)
+        .collect::<Vec<u32>>();
+    for difference_1 in differences_1 {
+        for difference_2 in differences_2 {
+            let intersection_size =
+                DifferenceIterator::from(&intersection, vec![&difference_1.0, &difference_2.0])
+                    .count();
+            let distance = distance(
+                union_1.len() - difference_1.0.len(),
+                union_2.len() - difference_2.0.len(),
+                intersection_size,
+            );
+            let sequence_index_1 = *file_to_index.get(&difference_1.1).unwrap();
+            let sequence_index_2 = *file_to_index.get(&difference_2.1).unwrap();
+            sender
+                .send((sequence_index_1, sequence_index_2, distance))
+                .unwrap();
+        }
+    }
 }
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
@@ -61,91 +218,101 @@ fn main() {
 
     info!("loading files2taxid at {}", args.file2taxid);
     let file2taxid = load_string2taxid(file2taxid_path);
-    info!("creating bitmaps for each group...");
-    let mut bit_vectors = vec![];
+    info!("creating sorted kmer vectors for each group...");
+    let mut sequences = vec![];
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(args.thread_number);
     for (files, taxid) in file2taxid {
         let sender_clone = sender.clone();
         pool.execute(move || {
-            let bitmap = create_bit_vector(&*files, args.kmer_length);
-            sender_clone.send((bitmap, files, taxid)).unwrap();
+            let sequence = create_bit_vectors(&*files, args.kmer_length, taxid);
+            sender_clone.send(sequence).unwrap();
         })
     }
     drop(sender);
     for triple in receiver {
-        bit_vectors.push(triple);
+        sequences.push(triple);
     }
 
-    info!("bitmaps computed, computing pairwise distances...");
+    info!("sorted kmer vectors computed, computing pairwise distances...");
 
-    let mut all_distances = vec![vec![]; bit_vectors.len()];
+    let (index_to_file_and_taxid, file_to_index) = create_file_to_index_map(&sequences);
+
+    let mut all_distances = index_to_file_and_taxid
+        .into_iter()
+        .map(|(file, taxid)| (vec![0_u32; file_to_index.len()], file, taxid))
+        .collect::<Vec<(Vec<u32>, String, u32)>>();
     let (sender, receiver) = mpsc::channel();
-    let bit_vectors_arc = Arc::new(bit_vectors);
-    for index_1 in 0..bit_vectors_arc.len() {
+    let sequences_arc = Arc::new(sequences);
+    let pool_arc = Arc::new(pool);
+    let file_to_index_arc = Arc::new(file_to_index);
+    for index_1 in 0..sequences_arc.len() {
         let sender_clone = sender.clone();
-        let bit_vectors_arc_clone = bit_vectors_arc.clone();
-        pool.execute(move || {
-            let mut total_duration = Duration::new(0, 0);
-            let mut total_intersection_count = 0;
-            let mut distances = vec![];
-            for index_2 in 0..bit_vectors_arc_clone.len() {
-                if index_2 <= index_1 {
+        let sequences_arc_clone = sequences_arc.clone();
+        let file_to_index_arc_clone = file_to_index_arc.clone();
+        pool_arc.execute(move || {
+            for index_2 in 0..sequences_arc_clone.len() {
+                if index_2 < index_1 {
                     continue;
+                } else if index_2 == index_1 {
+                    if let Sequence::Many(union, differences, _) = &sequences_arc_clone[index_1] {
+                        self_matrix(union, differences, &sender_clone, &file_to_index_arc_clone)
+                    }
+                } else {
+                    match (&sequences_arc_clone[index_1], &sequences_arc_clone[index_2]) {
+                        (
+                            Sequence::Many(union_1, differences_1, _),
+                            Sequence::Many(union_2, differences_2, _),
+                        ) => {
+                            many_to_many(
+                                union_1,
+                                differences_1,
+                                union_2,
+                                differences_2,
+                                &sender_clone,
+                                &file_to_index_arc_clone,
+                            );
+                        }
+                        (Sequence::Many(union, differences, _), Sequence::One(sequence, _)) => {
+                            many_to_one(
+                                union,
+                                differences,
+                                sequence,
+                                &sender_clone,
+                                &file_to_index_arc_clone,
+                            );
+                        }
+                        (Sequence::One(sequence, _), Sequence::Many(union, differences, _)) => {
+                            many_to_one(
+                                union,
+                                differences,
+                                sequence,
+                                &sender_clone,
+                                &file_to_index_arc_clone,
+                            );
+                        }
+                        (Sequence::One(sequence_1, _), Sequence::One(sequence_2, _)) => {
+                            one_to_one(
+                                sequence_1,
+                                sequence_2,
+                                &sender_clone,
+                                &file_to_index_arc_clone,
+                            );
+                        }
+                    }
                 }
-                let (bit_vector_1, bit_vector_2) = (
-                    &bit_vectors_arc_clone[index_1].0,
-                    &bit_vectors_arc_clone[index_2].0,
-                );
-                let start = Instant::now();
-                let intersection_size = IntersectIterator::from(bit_vector_1, bit_vector_2).count();
-                total_duration += start.elapsed();
-                total_intersection_count += 1;
-                // |A| + |B| - 2 * |A and B|
-                distances.push(
-                    (bit_vector_1.len() + bit_vector_2.len() - (2 * intersection_size)) as u32,
-                );
             }
-            sender_clone
-                .send((
-                    index_1,
-                    (total_duration, total_intersection_count),
-                    distances,
-                    bit_vectors_arc_clone[index_1].1.clone(),
-                    bit_vectors_arc_clone[index_1].2,
-                ))
-                .unwrap();
-        })
+        });
     }
     drop(sender);
-    let mut map = HashMap::new();
-    let mut total_duration = Duration::new(0, 0);
-    let mut total_computations = 0;
-    for (index, duration_information, distances, file, taxid) in receiver {
-        total_duration += duration_information.0;
-        total_computations += duration_information.1;
-        all_distances[index] = distances;
-        map.insert(index, (file, taxid));
-        if map.len() % 1000 == 0 {
-            debug!("done with {} sequences", map.len());
+    for (distance_computation, (index_1, index_2, distance)) in receiver.into_iter().enumerate() {
+        all_distances[index_1].0[index_2] = distance;
+        all_distances[index_2].0[index_1] = distance;
+        if distance_computation % 100000 == 0 {
+            debug!("done with {} distance computations", distance_computation);
         }
     }
-    debug!(
-        "average time to compute intersection was {:?}",
-        total_duration / total_computations
-    );
 
-    let data_dump = all_distances
-        .into_iter()
-        .enumerate()
-        .map(|(index, distances)| {
-            (
-                distances,
-                map.get(&index).unwrap().0.clone(),
-                map.get(&index).unwrap().1,
-            )
-        })
-        .collect::<Vec<(Vec<u32>, String, u32)>>();
-
-    dump_data_to_file(bincode::serialize(&data_dump).unwrap(), output_file_path).unwrap();
+    let data = bincode::serialize(&all_distances).unwrap();
+    dump_data_to_file(data, output_file_path).unwrap();
 }

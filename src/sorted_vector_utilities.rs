@@ -1,19 +1,14 @@
-use std::{iter::Peekable, slice::Iter};
 use itertools::{Itertools, KMerge};
-
-pub enum Sequence {
-    Single(Vec<u32>),
-    Many(Vec<u32>, Vec<Vec<u32>>)
-}
+use std::{iter::Peekable, slice::Iter};
 
 pub struct DifferenceIterator<'a> {
-    left_iterator: Iter<'a , u32>,
+    left_iterator: Iter<'a, u32>,
     right_iterator: UnionIterator<'a>,
     next_skip_value: Option<&'a u32>,
 }
 
 impl<'a> DifferenceIterator<'a> {
-    pub fn from(left_sorted_vector: &'a [u32], right_sorted_vectors: Vec<&'a [u32]>) -> Self {
+    pub fn from(left_sorted_vector: &'a Vec<u32>, right_sorted_vectors: Vec<&'a Vec<u32>>) -> Self {
         let mut right_iterator = UnionIterator::from(right_sorted_vectors);
         let first_skip_value = right_iterator.next();
         DifferenceIterator {
@@ -52,7 +47,7 @@ impl<'a> Iterator for DifferenceIterator<'a> {
             }
             self.next_skip_value = None;
             return Some(left_value);
-        } 
+        }
         None
     }
 }
@@ -62,7 +57,7 @@ pub struct UnionIterator<'a> {
 }
 
 impl<'a> UnionIterator<'a> {
-    pub fn from(sorted_vectors: Vec<&'a [u32]>) -> Self {
+    pub fn from(sorted_vectors: Vec<&'a Vec<u32>>) -> Self {
         UnionIterator {
             iterator: sorted_vectors.into_iter().kmerge().peekable(),
         }
@@ -96,7 +91,7 @@ pub struct IntersectIterator<'a> {
 }
 
 impl<'a> IntersectIterator<'a> {
-    pub fn from(sorted_vector_1: &'a [u32], sorted_vector_2: &'a [u32]) -> Self {
+    pub fn from(sorted_vector_1: &'a Vec<u32>, sorted_vector_2: &'a Vec<u32>) -> Self {
         IntersectIterator {
             value_1: &0,
             value_2: &0,

@@ -13,7 +13,16 @@ fn main() {
     println!("vector 1: {:?}", vector_1);
     println!("vector 2: {:?}", vector_2);
     println!("");
-    println!("intersection: {:?}", IntersectIterator::from(&vector_1, &vector_2).collect::<Vec<&u32>>());
-    println!("union: {:?}", UnionIterator::from(vec![&vector_1, &vector_2]).collect::<Vec<&u32>>());
-    println!("difference {:?}", DifferenceIterator::from(&vector_1, vec![&vector_2]).collect::<Vec<&u32>>());
+    println!(
+        "intersection: {:?}",
+        IntersectIterator::from(&vector_1, &vector_2).collect::<Vec<&u32>>()
+    );
+    println!(
+        "union: {:?}",
+        UnionIterator::from(vec![&vector_1, &vector_2]).collect::<Vec<&u32>>()
+    );
+    println!(
+        "difference {:?}",
+        DifferenceIterator::from(&vector_1, vec![&vector_2]).collect::<Vec<&u32>>()
+    );
 }
