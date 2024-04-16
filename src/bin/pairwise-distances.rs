@@ -305,13 +305,16 @@ fn main() {
         });
     }
     drop(sender);
+    let mut maximum_distance_computations = 0;
     for (distance_computation, (index_1, index_2, distance)) in receiver.into_iter().enumerate() {
         all_distances[index_1].0[index_2] = distance;
         all_distances[index_2].0[index_1] = distance;
         if distance_computation % 100000 == 0 {
             debug!("done with {} distance computations", distance_computation);
         }
+        maximum_distance_computations += 1
     }
+    info!("completed {} distance computations", maximum_distance_computations);
 
     let data = bincode::serialize(&all_distances).unwrap();
     dump_data_to_file(data, output_file_path).unwrap();
