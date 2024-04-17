@@ -11,7 +11,7 @@ use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
 enum Sequence {
-    One((Vec<u32>, String), u32),
+    One(Vec<u32>, String, u32),
     Many(Vec<u32>, Vec<(Vec<u32>, String)>, u32),
 }
 
@@ -37,7 +37,8 @@ fn create_bit_vectors(files: &str, kmer_length: usize, taxid: u32) -> Sequence {
         sorted_kmer_vectors.push((sorted_kmer_vector, file.to_string()));
     }
     if sorted_kmer_vectors.len() == 1 {
-        Sequence::One(sorted_kmer_vectors[0].clone(), taxid)
+        let sequence = sorted_kmer_vectors.into_iter().nth(0).unwrap();
+        Sequence::One(sequence.0, sequence.1, taxid)
     } else {
         let union = UnionIterator::from(
             sorted_kmer_vectors
@@ -68,10 +69,10 @@ fn create_file_to_index_map(
     let files = sequences
         .into_iter()
         .map(|sequence| match sequence {
-            Sequence::One((_, file), taxid) => vec![(file.clone(), *taxid)],
-            Sequence::Many(_, files, taxid) => files
+            Sequence::One(_set, file, taxid) => vec![(file.clone(), *taxid)],
+            Sequence::Many(_union, files, taxid) => files
                 .into_iter()
-                .map(|(_, file)| (file.clone(), *taxid))
+                .map(|(_difference, file)| (file.clone(), *taxid))
                 .collect::<Vec<(String, u32)>>(),
         })
         .flatten()
@@ -80,33 +81,35 @@ fn create_file_to_index_map(
         files
             .iter()
             .enumerate()
-            .map(|(index, file)| (file.0.clone(), index)),
+            .map(|(index, (file, _taxid))| (file.clone(), index)),
     );
     (files, map)
 }
 
 fn self_matrix(
-    union: &Vec<u32>,
-    difference_vectors: &Vec<(Vec<u32>, String)>,
+    many_sequences: (&Vec<u32>, &Vec<(Vec<u32>, String)>),
     sender: &Sender<(usize, usize, u32)>,
     file_to_index: &Arc<HashMap<String, usize>>,
 ) -> () {
+    let (union, difference_vectors) = many_sequences;
     for index_1 in 0..difference_vectors.len() {
         for index_2 in 0..difference_vectors.len() {
             if index_2 <= index_1 {
                 continue;
             }
-            let difference_1 = &difference_vectors[index_1];
-            let difference_2 = &difference_vectors[index_2];
+            let (difference_1, difference_2) =
+                (&difference_vectors[index_1], &difference_vectors[index_2]);
             let intersection_size =
                 DifferenceIterator::from(union, vec![&difference_1.0, &difference_2.0]).count();
             let distance = distance(
-                difference_1.0.len(),
-                difference_2.0.len(),
+                union.len() - difference_1.0.len(),
+                union.len() - difference_2.0.len(),
                 intersection_size,
             );
-            let sequence_index_1 = *file_to_index.get(&difference_1.1).unwrap();
-            let sequence_index_2 = *file_to_index.get(&difference_1.1).unwrap();
+            let (sequence_index_1, sequence_index_2) = (
+                *file_to_index.get(&difference_1.1).unwrap(),
+                *file_to_index.get(&difference_2.1).unwrap(),
+            );
             sender
                 .send((sequence_index_1, sequence_index_2, distance))
                 .unwrap();
@@ -115,28 +118,30 @@ fn self_matrix(
 }
 
 fn one_to_one(
-    sequence_1: &(Vec<u32>, String),
-    sequence_2: &(Vec<u32>, String),
+    sequence_1: (&Vec<u32>, &String),
+    sequence_2: (&Vec<u32>, &String),
     sender: &Sender<(usize, usize, u32)>,
     file_to_index: &Arc<HashMap<String, usize>>,
 ) -> () {
     let intersection_size = IntersectIterator::from(&sequence_1.0, &sequence_2.0).count();
     let distance = distance(sequence_1.0.len(), sequence_2.0.len(), intersection_size);
-    let sequence_index_1 = *file_to_index.get(&sequence_1.1).unwrap();
-    let sequence_index_2 = *file_to_index.get(&sequence_2.1).unwrap();
+    let (sequence_index_1, sequence_index_2) = (
+        *file_to_index.get(sequence_1.1).unwrap(),
+        *file_to_index.get(sequence_2.1).unwrap(),
+    );
     sender
         .send((sequence_index_1, sequence_index_2, distance))
         .unwrap();
 }
 
 fn many_to_one(
-    union: &Vec<u32>,
-    differences: &Vec<(Vec<u32>, String)>,
-    sequence: &(Vec<u32>, String),
+    many_sequences: (&Vec<u32>, &Vec<(Vec<u32>, String)>),
+    one: (&Vec<u32>, &String),
     sender: &Sender<(usize, usize, u32)>,
     file_to_index: &Arc<HashMap<String, usize>>,
 ) -> () {
-    let intersection = IntersectIterator::from(union, &sequence.0)
+    let (union, differences) = many_sequences;
+    let intersection = IntersectIterator::from(union, one.0)
         .map(|kmer| *kmer)
         .collect::<Vec<u32>>();
     for difference in differences {
@@ -144,11 +149,13 @@ fn many_to_one(
             DifferenceIterator::from(&intersection, vec![&difference.0]).count();
         let distance = distance(
             union.len() - difference.0.len(),
-            sequence.0.len(),
+            one.0.len(),
             intersection_size,
         );
-        let sequence_index_1 = *file_to_index.get(&sequence.1).unwrap();
-        let sequence_index_2 = *file_to_index.get(&difference.1).unwrap();
+        let (sequence_index_1, sequence_index_2) = (
+            *file_to_index.get(one.1).unwrap(),
+            *file_to_index.get(&difference.1).unwrap(),
+        );
         sender
             .send((sequence_index_1, sequence_index_2, distance))
             .unwrap();
@@ -156,13 +163,13 @@ fn many_to_one(
 }
 
 fn many_to_many(
-    union_1: &Vec<u32>,
-    differences_1: &Vec<(Vec<u32>, String)>,
-    union_2: &Vec<u32>,
-    differences_2: &Vec<(Vec<u32>, String)>,
+    many_sequences_1: (&Vec<u32>, &Vec<(Vec<u32>, String)>),
+    many_sequences_2: (&Vec<u32>, &Vec<(Vec<u32>, String)>),
     sender: &Sender<(usize, usize, u32)>,
     file_to_index: &Arc<HashMap<String, usize>>,
 ) -> () {
+    let (union_1, differences_1) = many_sequences_1;
+    let (union_2, differences_2) = many_sequences_2;
     let intersection = IntersectIterator::from(union_1, union_2)
         .map(|kmer| *kmer)
         .collect::<Vec<u32>>();
@@ -176,8 +183,10 @@ fn many_to_many(
                 union_2.len() - difference_2.0.len(),
                 intersection_size,
             );
-            let sequence_index_1 = *file_to_index.get(&difference_1.1).unwrap();
-            let sequence_index_2 = *file_to_index.get(&difference_2.1).unwrap();
+            let (sequence_index_1, sequence_index_2) = (
+                *file_to_index.get(&difference_1.1).unwrap(),
+                *file_to_index.get(&difference_2.1).unwrap(),
+            );
             sender
                 .send((sequence_index_1, sequence_index_2, distance))
                 .unwrap();
@@ -256,45 +265,54 @@ fn main() {
                     continue;
                 } else if index_2 == index_1 {
                     if let Sequence::Many(union, differences, _) = &sequences_arc_clone[index_1] {
-                        self_matrix(union, differences, &sender_clone, &file_to_index_arc_clone)
+                        self_matrix(
+                            (union, differences),
+                            &sender_clone,
+                            &file_to_index_arc_clone,
+                        )
                     }
                 } else {
                     match (&sequences_arc_clone[index_1], &sequences_arc_clone[index_2]) {
                         (
-                            Sequence::Many(union_1, differences_1, _),
-                            Sequence::Many(union_2, differences_2, _),
+                            Sequence::Many(union_1, differences_1, _taxid_1),
+                            Sequence::Many(union_2, differences_2, _taxid_2),
                         ) => {
                             many_to_many(
-                                union_1,
-                                differences_1,
-                                union_2,
-                                differences_2,
+                                (union_1, differences_1),
+                                (union_2, differences_2),
                                 &sender_clone,
                                 &file_to_index_arc_clone,
                             );
                         }
-                        (Sequence::Many(union, differences, _), Sequence::One(sequence, _)) => {
+                        (
+                            Sequence::Many(union, differences, _taxid_1),
+                            Sequence::One(set, file, _taxid_2),
+                        ) => {
                             many_to_one(
-                                union,
-                                differences,
-                                sequence,
+                                (union, differences),
+                                (set, file),
                                 &sender_clone,
                                 &file_to_index_arc_clone,
                             );
                         }
-                        (Sequence::One(sequence, _), Sequence::Many(union, differences, _)) => {
+                        (
+                            Sequence::One(set, file, _taxid_1),
+                            Sequence::Many(union, differences, _taxid_2),
+                        ) => {
                             many_to_one(
-                                union,
-                                differences,
-                                sequence,
+                                (union, differences),
+                                (set, file),
                                 &sender_clone,
                                 &file_to_index_arc_clone,
                             );
                         }
-                        (Sequence::One(sequence_1, _), Sequence::One(sequence_2, _)) => {
+                        (
+                            Sequence::One(set_1, file_1, _taxid_1),
+                            Sequence::One(set_2, file_2, _taxid_2),
+                        ) => {
                             one_to_one(
-                                sequence_1,
-                                sequence_2,
+                                (set_1, file_1),
+                                (set_2, file_2),
                                 &sender_clone,
                                 &file_to_index_arc_clone,
                             );
@@ -314,7 +332,10 @@ fn main() {
         }
         maximum_distance_computations += 1
     }
-    info!("completed {} distance computations", maximum_distance_computations);
+    info!(
+        "completed {} distance computations",
+        maximum_distance_computations
+    );
 
     let data = bincode::serialize(&all_distances).unwrap();
     dump_data_to_file(data, output_file_path).unwrap();
