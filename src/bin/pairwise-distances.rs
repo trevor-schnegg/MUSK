@@ -210,7 +210,7 @@ fn main() {
     for (distance_computation, (index_1, index_2, distance)) in receiver.into_iter().enumerate() {
         all_distances[index_1].0[index_2] = distance;
         all_distances[index_2].0[index_1] = distance;
-        if distance_computation % 100000 == 0 {
+        if distance_computation % 1000000 == 0 {
             debug!("done with {} distance computations", distance_computation);
         }
         maximum_distance_computations += 1
