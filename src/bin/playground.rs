@@ -1,5 +1,7 @@
-use musk::sorted_vector_utilities::{DifferenceIterator, IntersectIterator, UnionIterator};
 // use musk::kmer_iter::KmerIter;
+
+use itertools::Itertools;
+use musk::rle::{BuildRunLengthEncoding, Run};
 
 fn main() {
     // let seq = "ATGCTGA".as_bytes();
@@ -7,22 +9,17 @@ fn main() {
     // while let Some(kmer) = seq_iter.next() {
     //     println!("{:08b}", kmer);
     // }
+    
+    let _maximum = (1_usize << 14) - 1;
 
-    let vector_1 = vec![1, 2, 3, 6, 13, 15, 18, 22, 40];
-    let vector_2 = vec![0, 2, 3, 7, 13, 15, 20, 26, 40];
-    println!("vector 1: {:?}", vector_1);
-    println!("vector 2: {:?}", vector_2);
-    println!("");
-    println!(
-        "intersection: {:?}",
-        IntersectIterator::from(&vector_1, &vector_2).collect::<Vec<&u32>>()
-    );
-    println!(
-        "union: {:?}",
-        UnionIterator::from(vec![&vector_1, &vector_2]).collect::<Vec<&u32>>()
-    );
-    println!(
-        "difference {:?}",
-        DifferenceIterator::from(&vector_1, vec![&vector_2]).collect::<Vec<&u32>>()
-    );
+    let vector = vec![5, 6, 7, 8, 9, 20, 25];
+
+    let mut build_rle_1 = BuildRunLengthEncoding::new();
+    for int in vector {
+        build_rle_1.push(int);
+    }
+    let mut rle_1 = build_rle_1.to_rle();
+    println!("{:?}", rle_1.get_vector().iter().map(|x| Run::from_u16(*x)).collect_vec());
+    rle_1.compress();
+    println!("{:?}", rle_1.get_vector().iter().map(|x| Run::from_u16(*x)).collect_vec());
 }
