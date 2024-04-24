@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 
-fn create_bitmap(files: &str, kmer_length: usize, taxid: u32) -> (RoaringBitmap, String, u32) {
+fn create_bitmap(files: String, kmer_length: usize, taxid: u32) -> (RoaringBitmap, String, u32) {
     let mut kmer_set = HashSet::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -25,7 +25,7 @@ fn create_bitmap(files: &str, kmer_length: usize, taxid: u32) -> (RoaringBitmap,
     }
     let mut kmers = Vec::from_iter(kmer_set.into_iter());
     kmers.sort();
-    (RoaringBitmap::from_sorted_iter(kmers).unwrap(), files.to_string(), taxid)
+    (RoaringBitmap::from_sorted_iter(kmers).unwrap(), files, taxid)
 }
 
 fn distance(size_1: u64, size_2: u64, intersection_size: u64) -> u32 {
@@ -73,7 +73,7 @@ fn main() {
     for (files, taxid) in file2taxid {
         let sender_clone = sender.clone();
         pool.execute(move || {
-            let sequence = create_bitmap(&*files, args.kmer_length, taxid);
+            let sequence = create_bitmap(files, args.kmer_length, taxid);
             sender_clone.send(sequence).unwrap();
         })
     }
