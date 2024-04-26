@@ -1,7 +1,7 @@
 use clap::Parser;
 use itertools::Itertools;
 use log::{debug, info};
-use musk::io::load_data_from_file;
+use musk::io::{dump_data_to_file, load_data_from_file};
 use musk::kmer_iter::KmerIter;
 use musk::rle::BuildRunLengthEncoding;
 use musk::utility::get_fasta_iterator_of_file;
@@ -56,6 +56,7 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let ordering_file_path = Path::new(&args.ordering_file);
+    let output_file_path = Path::new(&args.output_file);
 
     info!("loading ordering at {}", args.ordering_file);
     let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
@@ -90,4 +91,6 @@ fn main() {
     let compressed_database = database.into_iter().map(|build_rle| build_rle.to_rle()).collect_vec();
     let compressed_runs = compressed_database.iter().map(|rle| rle.get_vector().len()).sum::<usize>();
     info!("Total compressed runs for the ordering {}", compressed_runs);
+    info!("Saving the compressed runs to the output file...");
+    dump_data_to_file(bincode::serialize(&compressed_database).unwrap(), output_file_path).unwrap();
 }

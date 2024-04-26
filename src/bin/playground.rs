@@ -18,8 +18,7 @@ fn main() {
     for int in vector {
         build_rle_1.push(int);
     }
-    let mut rle_1 = build_rle_1.to_rle();
+    let rle_1 = build_rle_1.to_rle();
     println!("{:?}", rle_1.get_vector().iter().map(|x| Run::from_u16(*x)).collect_vec());
-    rle_1.compress();
     println!("{:?}", rle_1.get_vector().iter().map(|x| Run::from_u16(*x)).collect_vec());
 }

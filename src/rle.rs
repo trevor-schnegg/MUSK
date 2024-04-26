@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use log::warn;
+use serde::{Deserialize, Serialize};
 
 
 #[derive(Debug)]
@@ -44,6 +45,7 @@ pub struct BuildRunLengthEncoding {
     vector: Vec<u16>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct RunLengthEncoding {
     vector: Vec<u16>,
 }
@@ -144,7 +146,7 @@ impl RunLengthEncoding {
                     compressed_vector.push(run);
                 } else {
                     buffer.push(run);
-                    let decompressed = decompress(&mut buffer);
+                    let decompressed = decompress_buffer(&mut buffer);
                     buffer.clear();
                     current_buffer_size = 0;
                     compressed_vector.push(Run::Uncompressed(decompressed));
@@ -172,7 +174,7 @@ impl RunLengthEncoding {
                         (Run::Zeros(fill_buffer_size), Run::Zeros(leftover_size))
                     };
                     buffer.push(run_to_push);
-                    let decompressed = decompress(&mut buffer);
+                    let decompressed = decompress_buffer(&mut buffer);
                     buffer.clear();
                     current_buffer_size = 0;
                     compressed_vector.push(Run::Uncompressed(decompressed));
@@ -188,13 +190,13 @@ impl RunLengthEncoding {
         if buffer.len() <= 1 {
             compressed_vector.append(&mut buffer);
         } else {
-            compressed_vector.push(Run::Uncompressed(decompress(&buffer)))
+            compressed_vector.push(Run::Uncompressed(decompress_buffer(&buffer)))
         }
         self.vector = compressed_vector.into_iter().map(|x| x.to_u16()).collect_vec();
     }
 }
 
-fn decompress(buffer: &Vec<Run>) -> u16 {
+fn decompress_buffer(buffer: &Vec<Run>) -> u16 {
     let mut decompressed = 0;
     let mut current_index = 0;
     for run in buffer {
