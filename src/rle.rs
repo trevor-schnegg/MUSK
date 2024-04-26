@@ -124,7 +124,7 @@ impl RunLengthEncoding {
         &self.vector
     }
 
-    pub fn compress(&mut self) -> () {
+    fn compress(&mut self) -> () {
         let mut runs_iterator = self.vector.iter().map(|x| Run::from_u16(*x));
         let mut compressed_vector = vec![];
         let mut buffer = vec![];
