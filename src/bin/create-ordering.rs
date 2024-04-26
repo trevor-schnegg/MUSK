@@ -6,13 +6,13 @@ use rand::thread_rng;
 use std::collections::HashSet;
 use std::path::Path;
 
-fn find_ordering(distances: &Vec<(Vec<u64>, String, u32)>, start_index: usize) -> Vec<usize> {
+fn find_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: usize) -> Vec<usize> {
     let mut connected_indices = HashSet::from([start_index]);
     let mut ordering = vec![start_index];
     let mut current_index = start_index;
     while ordering.len() < distances.len() {
         let mut next_index = 0_usize;
-        let mut next_index_minimum = u64::MAX;
+        let mut next_index_minimum = u32::MAX;
         for (index, distance) in distances[current_index].0.iter().enumerate() {
             if connected_indices.contains(&index) {
                 continue;
@@ -34,9 +34,9 @@ fn find_ordering(distances: &Vec<(Vec<u64>, String, u32)>, start_index: usize) -
 
 fn average_hamming_distance(
     ordering: &Vec<usize>,
-    distances: &Vec<(Vec<u64>, String, u32)>,
+    distances: &Vec<(Vec<u32>, String, u32)>,
 ) -> (f64, u64) {
-    let sum = ordering.windows(2).map(|x| distances[x[0]].0[x[1]]).sum();
+    let sum = ordering.windows(2).map(|x| distances[x[0]].0[x[1]] as u64).sum();
     (sum as f64 / (ordering.len() - 1) as f64, sum)
 }
 
@@ -46,7 +46,7 @@ fn average_hamming_distance(
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = 0)]
-    /// Start index of the naive shortest walk traversal
+    /// Start index of the naive shortest path traversal
     start: usize,
 
     #[arg()]
@@ -69,22 +69,9 @@ fn main() {
     let random_output_file_path = Path::new(&random_output_file);
 
     info!("loading distances at {}", args.distances);
-    let mut distances = load_data_from_file::<Vec<(Vec<u64>, String, u32)>>(distances_file);
+    let distances = load_data_from_file::<Vec<(Vec<u32>, String, u32)>>(distances_file);
     debug!("length of distances: {}", distances.len());
-    info!("distances loaded! filling out the matrix of distance values...");
-
-    // Fill out the remaining distances
-    for index in 0..distances.len() {
-        let mut prior_distances = vec![];
-        for prior_index in 0..index {
-            let distance_between = distances[prior_index].0[index];
-            prior_distances.push(distance_between);
-        }
-        prior_distances.push(0);
-        prior_distances.append(&mut distances[index].0);
-        distances[index].0 = prior_distances;
-    }
-    info!("full matrix constructed! finding ordering...");
+    info!("distances loaded!, finding shortest path..."); 
 
     let ordering = find_ordering(&distances, args.start);
     assert_eq!(ordering[0], args.start);

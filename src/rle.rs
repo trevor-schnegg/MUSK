@@ -38,6 +38,7 @@ impl Run {
     }
 }
 
+#[derive(Clone)]
 pub struct BuildRunLengthEncoding {
     highest: usize,
     vector: Vec<u16>,
@@ -53,6 +54,10 @@ impl BuildRunLengthEncoding {
             highest: 0,
             vector: vec![],
         }
+    }
+
+    pub fn get_vector(&self) -> &Vec<u16> {
+        &self.vector
     }
 
     pub fn push(&mut self, value: usize) -> () {

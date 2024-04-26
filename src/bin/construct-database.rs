@@ -1,7 +1,9 @@
 use clap::Parser;
+use itertools::Itertools;
 use log::{debug, info};
-use musk::io::{dump_data_to_file, load_data_from_file};
+use musk::io::load_data_from_file;
 use musk::kmer_iter::KmerIter;
+use musk::rle::BuildRunLengthEncoding;
 use musk::utility::get_fasta_iterator_of_file;
 use roaring::RoaringBitmap;
 use std::collections::HashMap;
@@ -10,7 +12,7 @@ use std::sync::mpsc;
 use threadpool::ThreadPool;
 
 fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
-    let mut bitmap = RoaringBitmap::new();
+    let mut bitset = RoaringBitmap::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
@@ -18,11 +20,11 @@ fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                bitmap.insert(kmer as u32);
+                bitset.insert(kmer as u32);
             }
         }
     }
-    bitmap
+    bitset
 }
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
@@ -54,11 +56,10 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let ordering_file_path = Path::new(&args.ordering_file);
-    let output_file_path = Path::new(&args.output_file);
 
     info!("loading ordering at {}", args.ordering_file);
     let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
-    info!("creating bitmaps for each group...");
+    info!("creating sorted kmer vectors for each group...");
     let mut bitmaps = HashMap::new();
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(args.thread_number);
@@ -66,24 +67,27 @@ fn main() {
         let sender_clone = sender.clone();
         pool.execute(move || {
             let bitmap = create_bitmap(&*files, args.kmer_length);
-            sender_clone.send((files.clone(), bitmap)).unwrap();
+            sender_clone.send((files, bitmap)).unwrap();
         })
     }
     drop(sender);
-    for (files, bitmap) in receiver {
-        bitmaps.insert(files, bitmap);
+    for (files, sorted_kmer_vector) in receiver {
+        bitmaps.insert(files, sorted_kmer_vector);
     }
-    info!("bitmaps computed, creating database...");
+    info!("kmer vectors computed, creating database...");
 
-    let mut database = vec![RoaringBitmap::new(); 4_usize.pow(args.kmer_length as u32)];
+    let mut database = vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
     for (index, (files, _taxid)) in ordering.into_iter().enumerate() {
         for kmer in bitmaps.get(&files).unwrap() {
-            assert!(database[kmer as usize].push(index as u32));
+            database[kmer as usize].push(index);
         }
         if index % 1000 == 0 && index != 0 {
             debug!("done inserting {} bitmaps into the database", index);
         }
     }
-    info!("database constructed! dumping to output file...");
-    dump_data_to_file(bincode::serialize(&database).unwrap(), output_file_path).unwrap();
+    let naive_runs = database.iter().map(|build_rle| build_rle.get_vector().len()).sum::<usize>();
+    info!("Total naive runs for the ordering {}", naive_runs);
+    let compressed_database = database.into_iter().map(|build_rle| build_rle.to_rle()).collect_vec();
+    let compressed_runs = compressed_database.iter().map(|rle| rle.get_vector().len()).sum::<usize>();
+    info!("Total compressed runs for the ordering {}", compressed_runs);
 }
