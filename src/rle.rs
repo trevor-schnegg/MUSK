@@ -111,9 +111,11 @@ impl BuildRunLengthEncoding {
     }
 
     pub fn to_rle(self) -> RunLengthEncoding {
-        RunLengthEncoding {
+        let mut rle = RunLengthEncoding {
             vector: self.vector,
-        }
+        };
+        rle.compress();
+        rle
     }
 }
 
