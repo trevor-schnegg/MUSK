@@ -2,7 +2,6 @@ use itertools::Itertools;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug)]
 pub enum Run {
     Zeros(u16),
@@ -19,9 +18,9 @@ const MAX_RUN: u16 = (1 << 14) - 1;
 impl Run {
     pub fn to_u16(&self) -> u16 {
         match *self {
-            Run::Zeros(count) => {count},
-            Run::Ones(count) => {count | (1 << 14)},
-            Run::Uncompressed(bits) => {bits | (1 << 15)},
+            Run::Zeros(count) => count,
+            Run::Ones(count) => count | (1 << 14),
+            Run::Uncompressed(bits) => bits | (1 << 15),
         }
     }
 
@@ -82,7 +81,10 @@ impl BuildRunLengthEncoding {
                 self.highest = value;
             }
         } else if value <= self.highest {
-            warn!("Tried to insert {} into an RLE with highest value {}, skipping...", value, self.highest);
+            warn!(
+                "Tried to insert {} into an RLE with highest value {}, skipping...",
+                value, self.highest
+            );
         } else if value == self.highest + 1 {
             let current_run = self.vector.last_mut().unwrap();
             if let Run::Ones(count) = Run::from_u16(*current_run) {
@@ -192,7 +194,10 @@ impl RunLengthEncoding {
         } else {
             compressed_vector.push(Run::Uncompressed(decompress_buffer(&buffer)))
         }
-        self.vector = compressed_vector.into_iter().map(|x| x.to_u16()).collect_vec();
+        self.vector = compressed_vector
+            .into_iter()
+            .map(|x| x.to_u16())
+            .collect_vec();
     }
 }
 
@@ -207,7 +212,7 @@ fn decompress_buffer(buffer: &Vec<Run>) -> u16 {
                     decompressed |= 1 << i;
                 }
                 current_index += count;
-            },
+            }
             Run::Zeros(count) => current_index += count,
         }
     }

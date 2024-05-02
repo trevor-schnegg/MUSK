@@ -36,7 +36,10 @@ fn average_hamming_distance(
     ordering: &Vec<usize>,
     distances: &Vec<(Vec<u32>, String, u32)>,
 ) -> (f64, u64) {
-    let sum = ordering.windows(2).map(|x| distances[x[0]].0[x[1]] as u64).sum();
+    let sum = ordering
+        .windows(2)
+        .map(|x| distances[x[0]].0[x[1]] as u64)
+        .sum();
     (sum as f64 / (ordering.len() - 1) as f64, sum)
 }
 
@@ -71,7 +74,7 @@ fn main() {
     info!("loading distances at {}", args.distances);
     let distances = load_data_from_file::<Vec<(Vec<u32>, String, u32)>>(distances_file);
     debug!("length of distances: {}", distances.len());
-    info!("distances loaded!, finding shortest path..."); 
+    info!("distances loaded!, finding shortest path...");
 
     let ordering = find_ordering(&distances, args.start);
     assert_eq!(ordering[0], args.start);

@@ -25,7 +25,11 @@ fn create_bitmap(files: String, kmer_length: usize, taxid: u32) -> (RoaringBitma
     }
     let mut kmers = Vec::from_iter(kmer_set.into_iter());
     kmers.sort();
-    (RoaringBitmap::from_sorted_iter(kmers).unwrap(), files, taxid)
+    (
+        RoaringBitmap::from_sorted_iter(kmers).unwrap(),
+        files,
+        taxid,
+    )
 }
 
 fn distance(size_1: u64, size_2: u64, intersection_size: u64) -> u32 {
@@ -98,10 +102,15 @@ fn main() {
                 if sequence_index_2 <= sequence_index_1 {
                     continue;
                 }
-                let (sequence_1, sequence_2) = (&sequences_arc_clone[sequence_index_1].0, &sequences_arc_clone[sequence_index_2].0);
+                let (sequence_1, sequence_2) = (
+                    &sequences_arc_clone[sequence_index_1].0,
+                    &sequences_arc_clone[sequence_index_2].0,
+                );
                 let intersection_size = sequence_1.intersection_len(sequence_2);
                 let distance = distance(sequence_1.len(), sequence_2.len(), intersection_size);
-                sender_clone.send((sequence_index_1, sequence_index_2, distance)).unwrap();
+                sender_clone
+                    .send((sequence_index_1, sequence_index_2, distance))
+                    .unwrap();
             }
         });
     }

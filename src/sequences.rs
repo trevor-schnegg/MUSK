@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::sync::mpsc::Sender;
-use std::collections::HashMap;
 use crate::sorted_vector_utilities::{DifferenceIterator, IntersectIterator};
+use std::collections::HashMap;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 pub enum Sequence {
     One(Vec<u32>, String, u32),

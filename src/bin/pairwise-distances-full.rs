@@ -34,22 +34,20 @@ fn create_bitmaps(files: &str, kmer_length: usize, taxid: u32) -> Bitmap {
     }
     if sorted_kmer_vectors.len() == 1 {
         let sequence = sorted_kmer_vectors.into_iter().nth(0).unwrap();
-        Bitmap::One(RoaringBitmap::from_sorted_iter(sequence.0).unwrap(), sequence.1, taxid)
+        Bitmap::One(
+            RoaringBitmap::from_sorted_iter(sequence.0).unwrap(),
+            sequence.1,
+            taxid,
+        )
     } else {
-        let bitmaps = 
-            sorted_kmer_vectors
-                .into_iter()
-                .map(|(vector, files)| (RoaringBitmap::from_sorted_iter(vector).unwrap(), files))
-                .collect_vec();
-        let union = bitmaps.iter().map(|x| &x.0).union();
-        let difference_vectors = bitmaps 
+        let bitmaps = sorted_kmer_vectors
             .into_iter()
-            .map(|(bitmap, file)| {
-                (
-                    &union - bitmap,
-                    file,
-                )
-            })
+            .map(|(vector, files)| (RoaringBitmap::from_sorted_iter(vector).unwrap(), files))
+            .collect_vec();
+        let union = bitmaps.iter().map(|x| &x.0).union();
+        let difference_vectors = bitmaps
+            .into_iter()
+            .map(|(bitmap, file)| (&union - bitmap, file))
             .collect_vec();
         Bitmap::Many(union, difference_vectors, taxid)
     }
@@ -151,24 +149,39 @@ fn main() {
                 if sequence_index_2 < sequence_index_1 {
                     continue;
                 } else if sequence_index_2 == sequence_index_1 {
-                    if let Bitmap::Many(union, differences, _) = &sequences_arc_clone[sequence_index_1] {
+                    if let Bitmap::Many(union, differences, _) =
+                        &sequences_arc_clone[sequence_index_1]
+                    {
                         for difference_index_1 in 0..differences.len() {
                             for difference_index_2 in 0..differences.len() {
                                 if difference_index_2 <= difference_index_1 {
                                     continue;
                                 }
-                                let (difference_1, difference_2) = (&differences[difference_index_1], &differences[difference_index_2]);
-                                let intersection_size = union.difference_len(&vec![&difference_1.0, &difference_2.0].union());
+                                let (difference_1, difference_2) = (
+                                    &differences[difference_index_1],
+                                    &differences[difference_index_2],
+                                );
+                                let intersection_size = union.difference_len(
+                                    &vec![&difference_1.0, &difference_2.0].union(),
+                                );
                                 let size_1 = union.len() - difference_1.0.len();
                                 let size_2 = union.len() - difference_2.0.len();
                                 let distance = distance(size_1, size_2, intersection_size);
-                                let (send_index_1, send_index_2) = (*file_to_index_arc_clone.get(&difference_1.1).unwrap(), *file_to_index_arc_clone.get(&difference_2.1).unwrap());
-                                sender_clone.send((send_index_1, send_index_2, distance)).unwrap();
+                                let (send_index_1, send_index_2) = (
+                                    *file_to_index_arc_clone.get(&difference_1.1).unwrap(),
+                                    *file_to_index_arc_clone.get(&difference_2.1).unwrap(),
+                                );
+                                sender_clone
+                                    .send((send_index_1, send_index_2, distance))
+                                    .unwrap();
                             }
                         }
                     }
                 } else {
-                    match (&sequences_arc_clone[sequence_index_1], &sequences_arc_clone[sequence_index_2]) {
+                    match (
+                        &sequences_arc_clone[sequence_index_1],
+                        &sequences_arc_clone[sequence_index_2],
+                    ) {
                         (
                             Bitmap::Many(union_1, differences_1, _taxid_1),
                             Bitmap::Many(union_2, differences_2, _taxid_2),
@@ -176,12 +189,19 @@ fn main() {
                             let union_intersection = vec![union_1, union_2].intersection();
                             for difference_1 in differences_1 {
                                 for difference_2 in differences_2 {
-                                    let intersection_size = union_intersection.difference_len(&vec![&difference_1.0, &difference_2.0].union());
+                                    let intersection_size = union_intersection.difference_len(
+                                        &vec![&difference_1.0, &difference_2.0].union(),
+                                    );
                                     let size_1 = union_1.len() - difference_1.0.len();
                                     let size_2 = union_2.len() - difference_2.0.len();
                                     let distance = distance(size_1, size_2, intersection_size);
-                                    let (send_index_1, send_index_2) = (*file_to_index_arc_clone.get(&difference_1.1).unwrap(), *file_to_index_arc_clone.get(&difference_2.1).unwrap());
-                                    sender_clone.send((send_index_1, send_index_2, distance)).unwrap();
+                                    let (send_index_1, send_index_2) = (
+                                        *file_to_index_arc_clone.get(&difference_1.1).unwrap(),
+                                        *file_to_index_arc_clone.get(&difference_2.1).unwrap(),
+                                    );
+                                    sender_clone
+                                        .send((send_index_1, send_index_2, distance))
+                                        .unwrap();
                                 }
                             }
                         }
@@ -195,8 +215,13 @@ fn main() {
                                 let intersection_size = intersection.difference_len(&difference.0);
                                 let size_2 = union.len() - difference.0.len();
                                 let distance = distance(size_1, size_2, intersection_size);
-                                let (send_index_1, send_index_2) = (*file_to_index_arc_clone.get(&difference.1).unwrap(), *file_to_index_arc_clone.get(file).unwrap());
-                                sender_clone.send((send_index_1, send_index_2, distance)).unwrap();
+                                let (send_index_1, send_index_2) = (
+                                    *file_to_index_arc_clone.get(&difference.1).unwrap(),
+                                    *file_to_index_arc_clone.get(file).unwrap(),
+                                );
+                                sender_clone
+                                    .send((send_index_1, send_index_2, distance))
+                                    .unwrap();
                             }
                         }
                         (
@@ -209,8 +234,13 @@ fn main() {
                                 let intersection_size = intersection.difference_len(&difference.0);
                                 let size_2 = union.len() - difference.0.len();
                                 let distance = distance(size_1, size_2, intersection_size);
-                                let (send_index_1, send_index_2) = (*file_to_index_arc_clone.get(&difference.1).unwrap(), *file_to_index_arc_clone.get(file).unwrap());
-                                sender_clone.send((send_index_1, send_index_2, distance)).unwrap();
+                                let (send_index_1, send_index_2) = (
+                                    *file_to_index_arc_clone.get(&difference.1).unwrap(),
+                                    *file_to_index_arc_clone.get(file).unwrap(),
+                                );
+                                sender_clone
+                                    .send((send_index_1, send_index_2, distance))
+                                    .unwrap();
                             }
                         }
                         (
@@ -219,8 +249,13 @@ fn main() {
                         ) => {
                             let intersection_size = set_1.intersection_len(set_2);
                             let distance = distance(set_1.len(), set_2.len(), intersection_size);
-                            let (send_index_1, send_index_2) = (*file_to_index_arc_clone.get(file_1).unwrap(), *file_to_index_arc_clone.get(file_2).unwrap());
-                            sender_clone.send((send_index_1, send_index_2, distance)).unwrap();
+                            let (send_index_1, send_index_2) = (
+                                *file_to_index_arc_clone.get(file_1).unwrap(),
+                                *file_to_index_arc_clone.get(file_2).unwrap(),
+                            );
+                            sender_clone
+                                .send((send_index_1, send_index_2, distance))
+                                .unwrap();
                         }
                     }
                 }

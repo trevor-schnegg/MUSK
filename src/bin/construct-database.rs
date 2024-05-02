@@ -86,11 +86,24 @@ fn main() {
             debug!("done inserting {} bitmaps into the database", index);
         }
     }
-    let naive_runs = database.iter().map(|build_rle| build_rle.get_vector().len()).sum::<usize>();
+    let naive_runs = database
+        .iter()
+        .map(|build_rle| build_rle.get_vector().len())
+        .sum::<usize>();
     info!("Total naive runs for the ordering {}", naive_runs);
-    let compressed_database = database.into_iter().map(|build_rle| build_rle.to_rle()).collect_vec();
-    let compressed_runs = compressed_database.iter().map(|rle| rle.get_vector().len()).sum::<usize>();
+    let compressed_database = database
+        .into_iter()
+        .map(|build_rle| build_rle.to_rle())
+        .collect_vec();
+    let compressed_runs = compressed_database
+        .iter()
+        .map(|rle| rle.get_vector().len())
+        .sum::<usize>();
     info!("Total compressed runs for the ordering {}", compressed_runs);
     info!("Saving the compressed runs to the output file...");
-    dump_data_to_file(bincode::serialize(&compressed_database).unwrap(), output_file_path).unwrap();
+    dump_data_to_file(
+        bincode::serialize(&compressed_database).unwrap(),
+        output_file_path,
+    )
+    .unwrap();
 }
