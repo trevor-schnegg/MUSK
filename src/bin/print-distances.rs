@@ -1,7 +1,9 @@
 use clap::Parser;
+use itertools::Itertools;
 use log::{debug, info};
 use musk::io::load_data_from_file;
-use std::path::Path;
+use roaring::RoaringBitmap;
+use std::{collections::{HashMap, HashSet}, path::Path};
 
 /// Creates an ordering of files based on distances between bitmaps
 #[derive(Parser)]
@@ -10,7 +12,7 @@ use std::path::Path;
 struct Args {
     #[arg()]
     /// the distances file
-    distances: String,
+    subset_kmers: String,
 }
 
 fn main() {
@@ -18,26 +20,34 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let distances_file = Path::new(&args.distances);
+    let subset_bitmaps_path= Path::new(&args.subset_kmers);
 
-    info!("loading distances at {}", args.distances);
-    let all_distances = load_data_from_file::<Vec<(Vec<u64>, String, u32)>>(distances_file);
-    debug!("length of distances: {}", all_distances.len());
+    info!("loading kmer subset at {}", args.subset_kmers);
+    let (subset_kmers, subset_bitmaps) = load_data_from_file::<(
+        HashSet<u32>,
+        Vec<(String, RoaringBitmap, u32)>,
+    )>(subset_bitmaps_path);
 
-    for (index, (distances, id, _taxid)) in all_distances.into_iter().enumerate() {
-        let mut print_string = String::from(&*id);
-        print_string += "\t";
-        let mut distances_iterator = distances.into_iter();
-        if let Some(distance) = distances_iterator.next() {
-            print_string += &*distance.to_string();
+    debug!("{}", subset_bitmaps.len());
+
+    let mut subset_kmers_map: HashMap<u32, Vec<u32>> = HashMap::from_iter(subset_kmers.into_iter().map(|kmer| (kmer, vec![])));
+
+    for (index, (_files, kmers, _taxid)) in subset_bitmaps.into_iter().enumerate() {
+        for kmer in kmers {
+            subset_kmers_map.get_mut(&kmer).unwrap().push(index as u32);
         }
-        while let Some(distance) = distances_iterator.next() {
+    }
+    for (kmer, bits_set) in subset_kmers_map.into_iter().sorted_by_key(|(kmer, _set_bits)| *kmer) {
+        let mut print_string = kmer.to_string();
+        print_string += "\t";
+        let mut bits_set_iter = bits_set.into_iter();
+        if let Some(bit_set) = bits_set_iter.next() {
+            print_string += &*bit_set.to_string();
+        }
+        while let Some(bit_set) = bits_set_iter.next() {
             print_string += " ";
-            print_string += &*distance.to_string();
+            print_string += &*bit_set.to_string();
         }
         println!("{}", print_string);
-        if index % 1000 == 0 && index != 0 {
-            debug!("done with {} sequences", index);
-        }
     }
 }

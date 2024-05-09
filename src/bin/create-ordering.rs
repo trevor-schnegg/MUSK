@@ -1,8 +1,6 @@
 use clap::Parser;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_data_from_file};
-use rand::seq::SliceRandom;
-use rand::thread_rng;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -68,8 +66,6 @@ fn main() {
     let args = Args::parse();
     let distances_file = Path::new(&args.distances);
     let output_file_path = Path::new(&args.output_file);
-    let random_output_file = args.output_file.clone() + ".random";
-    let random_output_file_path = Path::new(&random_output_file);
 
     info!("loading distances at {}", args.distances);
     let distances = load_data_from_file::<Vec<(Vec<u32>, String, u32)>>(distances_file);
@@ -77,19 +73,10 @@ fn main() {
     info!("distances loaded!, finding shortest path...");
 
     let ordering = find_ordering(&distances, args.start);
-    assert_eq!(ordering[0], args.start);
     let avg_dist_output = average_hamming_distance(&ordering, &distances);
     debug!(
         "average hamming distance of ordering: {} (total: {})",
         avg_dist_output.0, avg_dist_output.1
-    );
-
-    let mut generic_ordering = (0..distances.len()).collect::<Vec<usize>>();
-    generic_ordering.shuffle(&mut thread_rng());
-    let generic_average_hamming_distance = average_hamming_distance(&generic_ordering, &distances);
-    debug!(
-        "average hamming distance of ordering: {} (total: {})",
-        generic_average_hamming_distance.0, generic_average_hamming_distance.1
     );
 
     let ordering_output = ordering
@@ -99,16 +86,6 @@ fn main() {
     dump_data_to_file(
         bincode::serialize(&ordering_output).unwrap(),
         output_file_path,
-    )
-    .unwrap();
-
-    let random_ordering_output = generic_ordering
-        .into_iter()
-        .map(|x| (distances[x].1.clone(), distances[x].2))
-        .collect::<Vec<(String, u32)>>();
-    dump_data_to_file(
-        bincode::serialize(&random_ordering_output).unwrap(),
-        random_output_file_path,
     )
     .unwrap();
 }

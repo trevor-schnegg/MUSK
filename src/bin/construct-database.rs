@@ -1,18 +1,15 @@
 use clap::Parser;
-use itertools::Itertools;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_data_from_file};
 use musk::kmer_iter::KmerIter;
-use musk::rle::BuildRunLengthEncoding;
+use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
 use musk::utility::get_fasta_iterator_of_file;
 use roaring::RoaringBitmap;
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::mpsc;
-use threadpool::ThreadPool;
+use rayon::prelude::*;
 
-fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
-    let mut bitset = RoaringBitmap::new();
+fn create_bitmap(files: &str, kmer_length: usize, low: usize, high: usize) -> RoaringBitmap {
+    let mut bitmap = RoaringBitmap::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         while let Some(Ok(record)) = record_iter.next() {
@@ -20,11 +17,13 @@ fn create_bitmap(files: &str, kmer_length: usize) -> RoaringBitmap {
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
-                bitset.insert(kmer as u32);
+                if low <= kmer && kmer < high {
+                    bitmap.insert(kmer as u32);
+                }
             }
         }
     }
-    bitset
+    bitmap
 }
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
@@ -37,9 +36,13 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
-    #[arg(short, long, default_value_t = 12)]
-    /// Length of k-mer to use in the database
-    thread_number: usize,
+    #[arg(short, long, default_value_t = 0)]
+    /// 2^{log_blocks} partitions
+    log_blocks: u32,
+
+    #[arg(short, long, default_value_t = 0)]
+    /// The index of the block to use
+    block_i: usize,
 
     #[arg()]
     /// the file2taxid file
@@ -58,28 +61,29 @@ fn main() {
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_file_path = Path::new(&args.output_file);
 
+    let (lowest_kmer, highest_kmer) = {
+        let n_blocks = 2_usize.pow(args.log_blocks);
+        if args.block_i >= n_blocks {
+            panic!("Block index needs to be < {}. Block index {} was chosen.", n_blocks, args.block_i);
+        }
+        let block_size = 4_usize.pow(args.kmer_length as u32) / n_blocks;
+        debug!("{} blocks with size {}", n_blocks, block_size);
+        (block_size * args.block_i, block_size * args.block_i + 1)
+    };
+    info!("accepting kmers in the range [{}, {})", lowest_kmer, highest_kmer);
+
     info!("loading ordering at {}", args.ordering_file);
     let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
     info!("creating sorted kmer vectors for each group...");
-    let mut bitmaps = HashMap::new();
-    let (sender, receiver) = mpsc::channel();
-    let pool = ThreadPool::new(args.thread_number);
-    for (files, _) in ordering.clone() {
-        let sender_clone = sender.clone();
-        pool.execute(move || {
-            let bitmap = create_bitmap(&*files, args.kmer_length);
-            sender_clone.send((files, bitmap)).unwrap();
-        })
-    }
-    drop(sender);
-    for (files, sorted_kmer_vector) in receiver {
-        bitmaps.insert(files, sorted_kmer_vector);
-    }
+    let bitmaps = ordering.par_iter().map(|(files, _taxid)| {
+        create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer)
+
+    }).collect::<Vec<RoaringBitmap>>();
     info!("kmer vectors computed, creating database...");
 
     let mut database = vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
-    for (index, (files, _taxid)) in ordering.into_iter().enumerate() {
-        for kmer in bitmaps.get(&files).unwrap() {
+    for (index, bitmap) in bitmaps.into_iter().enumerate() {
+        for kmer in bitmap {
             database[kmer as usize].push(index);
         }
         if index % 1000 == 0 && index != 0 {
@@ -92,9 +96,9 @@ fn main() {
         .sum::<usize>();
     info!("Total naive runs for the ordering {}", naive_runs);
     let compressed_database = database
-        .into_iter()
+        .into_par_iter()
         .map(|build_rle| build_rle.to_rle())
-        .collect_vec();
+        .collect::<Vec<RunLengthEncoding>>();
     let compressed_runs = compressed_database
         .iter()
         .map(|rle| rle.get_vector().len())
