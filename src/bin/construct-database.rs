@@ -68,7 +68,7 @@ fn main() {
         }
         let block_size = 4_usize.pow(args.kmer_length as u32) / n_blocks;
         debug!("{} blocks with size {}", n_blocks, block_size);
-        (block_size * args.block_i, block_size * args.block_i + 1)
+        (block_size * args.block_i, block_size * (args.block_i + 1))
     };
     info!("accepting kmers in the range [{}, {})", lowest_kmer, highest_kmer);
 
