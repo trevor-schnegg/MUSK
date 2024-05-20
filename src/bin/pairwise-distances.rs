@@ -10,6 +10,9 @@ use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 use rayon::prelude::*;
 
+// 999,999,937
+const XOR_NUMBER: usize = 0b_00111011100110101100100111000001;
+
 fn create_bitmap(files: String, kmer_length: usize, taxid: u32, low: usize, high: usize) -> (RoaringBitmap, String, u32) {
     let mut bitmap = RoaringBitmap::new();
     for file in files.split(",") {
@@ -19,6 +22,7 @@ fn create_bitmap(files: String, kmer_length: usize, taxid: u32, low: usize, high
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
+                let kmer = kmer ^ XOR_NUMBER;
                 if low <= kmer && kmer < high {
                     bitmap.insert(kmer as u32);
                 }
