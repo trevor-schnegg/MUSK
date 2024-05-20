@@ -9,6 +9,9 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use rayon::prelude::*;
 
+// 999,999,937
+const XOR_NUMBER: usize = 0b_00111011100110101100100111000001;
+
 fn create_bitmap(files: &str, kmer_length: usize, low: usize, high: usize) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
     for file in files.split(",") {
@@ -18,6 +21,7 @@ fn create_bitmap(files: &str, kmer_length: usize, low: usize, high: usize) -> Ro
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length) {
+                let kmer = kmer ^ XOR_NUMBER;
                 if low <= kmer && kmer < high {
                     bitmap.insert(kmer as u32);
                 }
