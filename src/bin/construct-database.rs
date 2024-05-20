@@ -1,4 +1,5 @@
 use clap::Parser;
+use itertools::Itertools;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_data_from_file};
 use musk::kmer_iter::KmerIter;
@@ -44,6 +45,14 @@ struct Args {
     /// The index of the block to use
     block_i: usize,
 
+    #[arg(short, long)]
+    /// The directory prefix of the fasta files
+    old_directory_prefix: Option<String>,
+
+    #[arg(short, long)]
+    /// The directory prefix of the fasta files
+    new_directory_prefix: Option<String>,
+
     #[arg()]
     /// the file2taxid file
     ordering_file: String,
@@ -61,6 +70,7 @@ fn main() {
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_file_path = Path::new(&args.output_file);
 
+
     let (lowest_kmer, highest_kmer) = {
         let n_blocks = 2_usize.pow(args.log_blocks);
         if args.block_i >= n_blocks {
@@ -73,7 +83,10 @@ fn main() {
     info!("accepting kmers in the range [{}, {})", lowest_kmer, highest_kmer);
 
     info!("loading ordering at {}", args.ordering_file);
-    let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
+    let mut ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
+    if let (Some(old_prefix), Some(new_prefix))= (args.old_directory_prefix, args.new_directory_prefix) {
+        ordering = ordering.into_iter().map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid)).collect_vec();
+    }
     info!("creating sorted kmer vectors for each group...");
     let bitmaps = ordering.par_iter().map(|(files, _taxid)| {
         create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer)
