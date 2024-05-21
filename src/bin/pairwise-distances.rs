@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
 use rayon::prelude::*;
 
-const XOR_NUMBER: usize = 999_999_937;
+const XOR_NUMBER: usize = 188_888_881;
 
 fn create_bitmap(files: String, kmer_length: usize, taxid: u32, low: usize, high: usize) -> (RoaringBitmap, String, u32) {
     let mut bitmap = RoaringBitmap::new();
