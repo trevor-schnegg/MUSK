@@ -9,8 +9,7 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use rayon::prelude::*;
 
-// 999,999,937
-const XOR_NUMBER: usize = 0b_00111011100110101100100111000001;
+const XOR_NUMBER: usize = 0999_999_937;
 
 fn create_bitmap(files: &str, kmer_length: usize, low: usize, high: usize) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
