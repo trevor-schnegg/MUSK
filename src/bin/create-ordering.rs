@@ -12,10 +12,7 @@ fn find_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: usize) -
         let mut next_index = 0_usize;
         let mut next_index_minimum = u32::MAX;
         for (index, distance) in distances[current_index].0.iter().enumerate() {
-            if connected_indices.contains(&index) {
-                continue;
-            }
-            if *distance < next_index_minimum {
+            if *distance < next_index_minimum && !connected_indices.contains(&index) {
                 next_index = index;
                 next_index_minimum = *distance;
             }

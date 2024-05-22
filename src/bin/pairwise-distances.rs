@@ -35,11 +35,6 @@ fn create_bitmap(files: String, kmer_length: usize, taxid: u32, low: usize, high
     )
 }
 
-fn distance(size_1: u64, size_2: u64, intersection_size: u64) -> u32 {
-    // |A| + |B| - (2 * |A & B|)
-    (size_1 + size_2 - (2 * intersection_size)) as u32
-}
-
 /// Creates a file to tax id mapping where files with the same tax id are grouped
 /// together if their k-mer spectra are similar enough.
 #[derive(Parser)]
@@ -121,7 +116,8 @@ fn main() {
                     &sequences_arc_clone[sequence_index_2].0,
                 );
                 let intersection_size = sequence_1.intersection_len(sequence_2);
-                let distance = distance(sequence_1.len(), sequence_2.len(), intersection_size);
+                // |A| + |B| - (2 * |A & B|)
+                let distance = (sequence_1.len() + sequence_2.len() - (2 * intersection_size)) as u32;
                 sender_clone
                     .send((sequence_index_1, sequence_index_2, distance))
                     .unwrap();
@@ -139,7 +135,7 @@ fn main() {
         total_distance_computations += 1
     }
     info!(
-        "completed {} distance computations",
+        "completed all {} distance computations",
         total_distance_computations
     );
 
