@@ -73,7 +73,6 @@ fn main() {
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_file_path = Path::new(&args.output_file);
 
-
     let (lowest_kmer, highest_kmer) = {
         let n_blocks = 2_usize.pow(args.log_blocks);
         if args.block_i >= n_blocks {

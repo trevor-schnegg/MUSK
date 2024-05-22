@@ -57,6 +57,14 @@ struct Args {
     /// The index of the block to use
     block_i: usize,
 
+    #[arg(short, long)]
+    /// The directory prefix of the fasta files
+    old_directory_prefix: Option<String>,
+
+    #[arg(short, long)]
+    /// The directory prefix of the fasta files
+    new_directory_prefix: Option<String>,
+
     #[arg()]
     /// Location to output the serialzed distances
     output_file: String,
@@ -86,7 +94,10 @@ fn main() {
     info!("accepting kmers in the range [{}, {})", lowest_kmer, highest_kmer);
 
     info!("loading files2taxid at {}", args.file2taxid);
-    let file2taxid = load_string2taxid(file2taxid_path);
+    let mut file2taxid = load_string2taxid(file2taxid_path);
+    if let (Some(old_prefix), Some(new_prefix))= (args.old_directory_prefix, args.new_directory_prefix) {
+        file2taxid = file2taxid.into_iter().map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid)).collect_vec();
+    }
     info!("{} groups total", file2taxid.len());
     info!("creating roaring bitmaps for each group...");
     let sequences = file2taxid.into_par_iter().map(|(files, taxid)| {

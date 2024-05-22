@@ -5,6 +5,7 @@ use musk::database::Database;
 use musk::io::load_string2taxid;
 use musk::utility::get_fasta_iterator_of_file;
 use num_traits::{One, Zero};
+use std::collections::HashMap;
 use std::ops::Neg;
 use std::path::Path;
 
@@ -39,13 +40,12 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let accession2taxid = Path::new(&args.accession2taxid);
     let prob_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.exp as i32).neg()));
     let reads_file = Path::new(&args.reads);
 
     // Get accession2taxid
     info!("Loading accession2taxid from: {}", args.accession2taxid);
-    let accession2taxid = load_string2taxid(accession2taxid);
+    let accession2taxid: HashMap<String, u32> = HashMap::from_iter(load_string2taxid(Path::new(&args.accession2taxid)).into_iter());
     info!("accession2taxid loaded!");
 
     info!("Loading database");

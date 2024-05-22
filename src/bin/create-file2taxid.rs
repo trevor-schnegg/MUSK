@@ -2,6 +2,7 @@ use clap::Parser;
 use log::{debug, info};
 use musk::io::load_string2taxid;
 use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
+use std::collections::HashMap;
 use std::path::Path;
 use taxonomy::{ncbi, TaxRank, Taxonomy};
 
@@ -31,7 +32,7 @@ fn main() {
     let reference_loc = Path::new(&args.reference_location);
 
     info!("reading accession2taxid at {}", args.accession2taxid);
-    let accession2taxid = load_string2taxid(Path::new(&args.accession2taxid));
+    let accession2taxid: HashMap<String, u32> = HashMap::from_iter(load_string2taxid(Path::new(&args.accession2taxid)).into_iter());
     info!(
         "accession2taxid loaded! reading taxonomy at {}",
         args.taxonomy_directory

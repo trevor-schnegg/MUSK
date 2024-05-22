@@ -15,22 +15,15 @@ pub fn split_string_to_taxid(line: String) -> (String, u32) {
     (file_path, taxid)
 }
 
-pub fn load_string2taxid(string2taxid: &Path) -> HashMap<String, u32> {
+pub fn load_string2taxid(string2taxid: &Path) -> Vec<(String, u32)> {
     let open_file =
         File::open(string2taxid).expect(&*format!("could not read tsv at {:?}", string2taxid));
     let reader = BufReader::new(open_file).lines();
-    let mut string2taxid = HashMap::new();
+    let mut string2taxid = Vec::new();
     for (line_number, line) in reader.enumerate() {
         match line {
             Ok(line) => {
-                let (file_path, taxid) = split_string_to_taxid(line);
-                if let Some(old_taxid) = string2taxid.insert(file_path.clone(), taxid) {
-                    warn!("key string '{}' was present multiple times", file_path);
-                    warn!(
-                        "old tax id was '{}', updating to '{}' - make sure this is intentional",
-                        old_taxid, taxid
-                    );
-                }
+                string2taxid.push(split_string_to_taxid(line));
             }
             Err(error) => {
                 warn!(
