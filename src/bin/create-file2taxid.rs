@@ -32,7 +32,8 @@ fn main() {
     let reference_loc = Path::new(&args.reference_location);
 
     info!("reading accession2taxid at {}", args.accession2taxid);
-    let accession2taxid: HashMap<String, u32> = HashMap::from_iter(load_string2taxid(Path::new(&args.accession2taxid)).into_iter());
+    let accession2taxid: HashMap<String, u32> =
+        HashMap::from_iter(load_string2taxid(Path::new(&args.accession2taxid)).into_iter());
     info!(
         "accession2taxid loaded! reading taxonomy at {}",
         args.taxonomy_directory

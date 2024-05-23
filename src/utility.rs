@@ -1,7 +1,7 @@
 use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use roaring::RoaringBitmap;
 use std::fs;
 use std::fs::File;
@@ -109,19 +109,30 @@ pub fn compressed_representation(kmer: &[u8]) -> Option<usize> {
     Some(num)
 }
 
-fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (usize, usize) {
+pub fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (usize, usize) {
     let n_blocks = 2_usize.pow(log_blocks);
     if block_index >= n_blocks {
-        panic!("Block index needs to be < {}. Block index {} was chosen.", n_blocks, block_index);
+        panic!(
+            "Block index needs to be < {}. Block index {} was chosen.",
+            n_blocks, block_index
+        );
     }
     let block_size = 4_usize.pow(kmer_length as u32) / n_blocks;
-    debug!("{} blocks with size {} each", n_blocks, block_size);
-    (block_size * block_index, block_size * (block_index + 1))
+    info!("{} blocks with size {} each", n_blocks, block_size);
+    let (lowest_kmer, highest_kmer) = (block_size * block_index, block_size * (block_index + 1));
+    info!(
+        "accepting kmers in the range [{}, {})",
+        lowest_kmer, highest_kmer
+    );
+    (lowest_kmer, highest_kmer)
 }
 
-pub fn create_bitmap(files: String, kmer_length: usize, log_blocks: u32, block_index: usize) -> RoaringBitmap {    
-    let (lowest_kmer, highest_kmer) = get_range(kmer_length, log_blocks, block_index);
-    info!("accepting kmers in the range [{}, {})", lowest_kmer, highest_kmer);
+pub fn create_bitmap(
+    files: String,
+    kmer_length: usize,
+    lowest_kmer: usize,
+    highest_kmer: usize,
+) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));

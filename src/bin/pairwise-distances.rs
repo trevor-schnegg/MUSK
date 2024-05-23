@@ -2,10 +2,10 @@ use clap::Parser;
 use itertools::Itertools;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_string2taxid};
-use musk::utility::create_bitmap;
+use musk::utility::{create_bitmap, get_range};
+use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
-use rayon::prelude::*;
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
 /// together if their k-mer spectra are similar enough.
@@ -56,32 +56,58 @@ fn main() {
 
     info!("loading files2taxid at {}", args.file2taxid);
     let mut file2taxid = load_string2taxid(file2taxid_path);
-    if let (Some(old_prefix), Some(new_prefix))= (args.old_directory_prefix, args.new_directory_prefix) {
-        file2taxid = file2taxid.into_iter().map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid)).collect_vec();
+    if let (Some(old_prefix), Some(new_prefix)) =
+        (args.old_directory_prefix, args.new_directory_prefix)
+    {
+        file2taxid = file2taxid
+            .into_iter()
+            .map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid))
+            .collect_vec();
     }
     info!("{} groups total", file2taxid.len());
     info!("creating roaring bitmaps for each group...");
-    let bitmaps = file2taxid.into_par_iter().map(|(files, taxid)| {
-        (create_bitmap(files.clone(), args.kmer_length, args.log_blocks, args.block_i), files, taxid)
-
-    }).collect::<Vec<(RoaringBitmap, String, u32)>>();
+    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, args.log_blocks, args.block_i);
+    let bitmaps = file2taxid
+        .into_par_iter()
+        .map(|(files, taxid)| {
+            (
+                create_bitmap(
+                    files.clone(),
+                    args.kmer_length,
+                    lowest_kmer,
+                    highest_kmer,
+                ),
+                files,
+                taxid,
+            )
+        })
+        .collect::<Vec<(RoaringBitmap, String, u32)>>();
     info!("roaring bitmaps computed, creating distance matrix...");
-    let all_distances = bitmaps.par_iter().enumerate().map(|(index_1, (bitmap_1, files_1, taxid_1))| {
-        if index_1 % 100 == 0 && index_1 != 0 {
-            debug!("starting index {}", index_1);
-        }
-        let inner_distances = bitmaps.par_iter().enumerate().filter_map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
-            if index_2 <= index_1 {
-                None
-            } else {
-                let intersection_size = bitmap_1.intersection_len(bitmap_2);
-                // |A| + |B| - (2 * |A & B|)
-                let distance = (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32;
-                Some(distance)
+    let all_distances = bitmaps
+        .par_iter()
+        .enumerate()
+        .map(|(index_1, (bitmap_1, files_1, taxid_1))| {
+            if index_1 % 100 == 0 && index_1 != 0 {
+                debug!("starting index {}", index_1);
             }
-        }).collect::<Vec<u32>>();
-        (inner_distances, files_1.clone(), *taxid_1)
-    }).collect::<Vec<(Vec<u32>, String, u32)>>();
+            let inner_distances = bitmaps
+                .par_iter()
+                .enumerate()
+                .filter_map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
+                    if index_2 <= index_1 {
+                        None
+                    } else {
+                        let intersection_size = bitmap_1.intersection_len(bitmap_2);
+                        // |A| + |B| - (2 * |A & B|)
+                        let distance =
+                            (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32;
+                        Some(distance)
+                    }
+                })
+                .collect::<Vec<u32>>();
+            (inner_distances, files_1.clone(), *taxid_1)
+        })
+        .collect::<Vec<(Vec<u32>, String, u32)>>();
 
     dump_data_to_file(
         bincode::serialize(&all_distances).unwrap(),

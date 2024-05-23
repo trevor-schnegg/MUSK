@@ -77,7 +77,11 @@ fn main() {
         }
         full_distance_vector.push(0);
         full_distance_vector.append(&mut distances[index].0);
-        all_distances.push((full_distance_vector, distances[index].1.clone(), distances[index].2.clone()));
+        all_distances.push((
+            full_distance_vector,
+            distances[index].1.clone(),
+            distances[index].2.clone(),
+        ));
     }
 
     let ordering = find_ordering(&all_distances, args.start);

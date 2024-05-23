@@ -45,7 +45,8 @@ fn main() {
 
     // Get accession2taxid
     info!("Loading accession2taxid from: {}", args.accession2taxid);
-    let accession2taxid: HashMap<String, u32> = HashMap::from_iter(load_string2taxid(Path::new(&args.accession2taxid)).into_iter());
+    let accession2taxid: HashMap<String, u32> =
+        HashMap::from_iter(load_string2taxid(Path::new(&args.accession2taxid)).into_iter());
     info!("accession2taxid loaded!");
 
     info!("Loading database");
