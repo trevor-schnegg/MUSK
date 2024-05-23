@@ -65,12 +65,23 @@ fn main() {
     let output_file_path = Path::new(&args.output_file);
 
     info!("loading distances at {}", args.distances);
-    let distances = load_data_from_file::<Vec<(Vec<u32>, String, u32)>>(distances_file);
+    let mut distances = load_data_from_file::<Vec<(Vec<u32>, String, u32)>>(distances_file);
     debug!("length of distances: {}", distances.len());
-    info!("distances loaded!, finding shortest path...");
+    info!("distances loaded!, filling out matrix...");
 
-    let ordering = find_ordering(&distances, args.start);
-    let avg_dist_output = average_hamming_distance(&ordering, &distances);
+    let mut all_distances = vec![];
+    for index in 0..distances.len() {
+        let mut full_distance_vector = vec![];
+        for other_index in 0..index {
+            full_distance_vector.push(distances[other_index].0[index - (other_index + 1)])
+        }
+        full_distance_vector.push(0);
+        full_distance_vector.append(&mut distances[index].0);
+        all_distances.push((full_distance_vector, distances[index].1.clone(), distances[index].2.clone()));
+    }
+
+    let ordering = find_ordering(&all_distances, args.start);
+    let avg_dist_output = average_hamming_distance(&ordering, &all_distances);
     debug!(
         "average hamming distance of ordering: {} (total: {})",
         avg_dist_output.0, avg_dist_output.1

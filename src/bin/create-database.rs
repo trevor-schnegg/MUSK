@@ -2,33 +2,11 @@ use clap::Parser;
 use itertools::Itertools;
 use log::{debug, info};
 use musk::io::{dump_data_to_file, load_data_from_file};
-use musk::kmer_iter::KmerIter;
 use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
-use musk::utility::get_fasta_iterator_of_file;
+use musk::utility::create_bitmap;
 use roaring::RoaringBitmap;
 use std::path::Path;
 use rayon::prelude::*;
-
-const XOR_NUMBER: usize = 188_888_881 ;
-
-fn create_bitmap(files: &str, kmer_length: usize, low: usize, high: usize) -> RoaringBitmap {
-    let mut bitmap = RoaringBitmap::new();
-    for file in files.split(",") {
-        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
-        while let Some(Ok(record)) = record_iter.next() {
-            if record.seq().len() < kmer_length {
-                continue;
-            }
-            for kmer in KmerIter::from(record.seq(), kmer_length) {
-                let kmer = kmer ^ XOR_NUMBER;
-                if low <= kmer && kmer < high {
-                    bitmap.insert(kmer as u32);
-                }
-            }
-        }
-    }
-    bitmap
-}
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
 /// together if their k-mer spectra are similar enough.
@@ -73,25 +51,14 @@ fn main() {
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_file_path = Path::new(&args.output_file);
 
-    let (lowest_kmer, highest_kmer) = {
-        let n_blocks = 2_usize.pow(args.log_blocks);
-        if args.block_i >= n_blocks {
-            panic!("Block index needs to be < {}. Block index {} was chosen.", n_blocks, args.block_i);
-        }
-        let block_size = 4_usize.pow(args.kmer_length as u32) / n_blocks;
-        debug!("{} blocks with size {}", n_blocks, block_size);
-        (block_size * args.block_i, block_size * (args.block_i + 1))
-    };
-    info!("accepting kmers in the range [{}, {})", lowest_kmer, highest_kmer);
-
     info!("loading ordering at {}", args.ordering_file);
     let mut ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
     if let (Some(old_prefix), Some(new_prefix))= (args.old_directory_prefix, args.new_directory_prefix) {
         ordering = ordering.into_iter().map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid)).collect_vec();
     }
     info!("creating sorted kmer vectors for each group...");
-    let bitmaps = ordering.par_iter().map(|(files, _taxid)| {
-        create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer)
+    let bitmaps = ordering.into_par_iter().map(|(files, _taxid)| {
+        create_bitmap(files, args.kmer_length, args.log_blocks, args.block_i)
 
     }).collect::<Vec<RoaringBitmap>>();
     info!("kmer vectors computed, creating database...");
