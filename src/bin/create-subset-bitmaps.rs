@@ -13,6 +13,7 @@ use rand::{
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::{collections::HashSet, path::Path};
+use indicatif::ParallelProgressIterator;
 
 fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> RoaringBitmap {
     let mut bitset = RoaringBitmap::new();
@@ -42,6 +43,14 @@ struct Args {
     kmer_length: usize,
 
     #[arg()]
+    /// The old directory prefix of the fasta files
+    old_directory_prefix: String,
+
+    #[arg()]
+    /// The old directory prefix of the fasta files
+    new_directory_prefix: String,
+
+    #[arg()]
     /// the ordering file
     ordering: String,
 
@@ -58,15 +67,15 @@ fn main() {
     let ordering_path = Path::new(&args.ordering);
     let output_path = Path::new(&args.output_file);
     let total_kmers = 4_usize.pow(args.kmer_length as u32);
-    let subset_size = 4_usize.pow(9);
+    let subset_size = 4_usize.pow(8);
 
     let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_path)
         .into_iter()
         .map(|(files, taxid)| {
             (
                 files.replace(
-                    "/projects/academic/jzola/tcschneg/MATE",
-                    "/home/trevor/Data",
+                    &*args.old_directory_prefix,
+                    &*args.new_directory_prefix,
                 ),
                 taxid,
             )
@@ -84,6 +93,7 @@ fn main() {
     info!("creating roaring bitmaps for each group...");
     let outputs = ordering
         .into_par_iter()
+        .progress()
         .map(|(files, taxid)| {
             let bitmap = create_bitmap(&*files, &kmer_subset, args.kmer_length);
             (files, bitmap, taxid)
