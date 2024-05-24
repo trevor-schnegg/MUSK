@@ -31,11 +31,11 @@ struct Args {
     block_index: usize,
 
     #[arg(short, long)]
-    /// The directory prefix of the fasta files
+    /// The old directory prefix of the fasta files
     old_directory_prefix: Option<String>,
 
     #[arg(short, long)]
-    /// The directory prefix of the fasta files
+    /// The old directory prefix of the fasta files
     new_directory_prefix: Option<String>,
 
     #[arg()]
@@ -104,11 +104,12 @@ fn main() {
             (inner_distances, files_1.clone(), *taxid_1)
         })
         .collect::<Vec<(Vec<u32>, String, u32)>>();
-    info!("distance matrix completed! outputting to file");
+    info!("distance matrix completed! outputting to file...");
 
     dump_data_to_file(
         bincode::serialize(&all_distances).unwrap(),
         output_file_path,
     )
     .unwrap();
+    info!("done!");
 }

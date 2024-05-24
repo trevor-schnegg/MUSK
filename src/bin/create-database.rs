@@ -28,16 +28,12 @@ struct Args {
     block_index: usize,
 
     #[arg(short, long)]
-    /// The directory prefix of the fasta files
+    /// The old directory prefix of the fasta files
     old_directory_prefix: Option<String>,
 
     #[arg(short, long)]
-    /// The directory prefix of the fasta files
+    /// The new directory prefix of the fasta files
     new_directory_prefix: Option<String>,
-
-    #[arg(short, long)]
-    /// The directory prefix of the fasta files
-    full_matrix_ordering: Option<String>,
 
     #[arg()]
     /// the file2taxid file
@@ -57,6 +53,7 @@ fn main() {
     let output_file_path = Path::new(&args.output_file);
 
     info!("loading ordering at {}", args.ordering_file);
+
     let mut ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_file_path);
     if let (Some(old_prefix), Some(new_prefix)) =
         (args.old_directory_prefix, args.new_directory_prefix)
@@ -66,7 +63,9 @@ fn main() {
             .map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid))
             .collect_vec();
     }
+
     info!("creating roaring bitmaps for each group...");
+
     let (lowest_kmer, highest_kmer) =
         get_range(args.kmer_length, args.log_blocks, args.block_index);
     let bitmaps = ordering
@@ -74,6 +73,7 @@ fn main() {
         .progress()
         .map(|(files, _taxid)| create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer))
         .collect::<Vec<RoaringBitmap>>();
+
     info!("roaring bitmaps computed, creating database...");
 
     let mut database = vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
@@ -86,7 +86,9 @@ fn main() {
         .iter()
         .map(|build_rle| build_rle.get_vector().len())
         .sum::<usize>();
+
     info!("Total naive runs for the ordering {}", naive_runs);
+
     let compressed_database = database
         .into_par_iter()
         .map(|build_rle| build_rle.to_rle())
@@ -95,11 +97,14 @@ fn main() {
         .iter()
         .map(|rle| rle.get_vector().len())
         .sum::<usize>();
+
     info!("Total compressed runs for the ordering {}", compressed_runs);
     info!("Saving the compressed runs to the output file...");
+
     dump_data_to_file(
         bincode::serialize(&compressed_database).unwrap(),
         output_file_path,
     )
     .unwrap();
+    info!("done!");
 }
