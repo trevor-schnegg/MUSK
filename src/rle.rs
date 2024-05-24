@@ -157,17 +157,8 @@ impl RunLengthEncoding {
                 // adding the next run would be strictly greater than 15
                 if buffer.len() == 0 {
                     compressed_vector.push(run);
-                } else if buffer.len() == 1 {
-                    compressed_vector.append(&mut buffer);
-                    current_buffer_size = 0;
-                    if run_size < 15 {
-                        buffer.push(run);
-                        current_buffer_size = run_size;
-                    } else {
-                        compressed_vector.push(run);
-                    }
                 } else {
-                    // buffer.len() >= 2
+                    // buffer.len() >= 1
                     let fill_buffer_size = 15 - current_buffer_size as u16;
                     let leftover_size = run_size as u16 - fill_buffer_size;
                     let (run_to_push, leftover_run) = if let Run::Ones(_) = run {

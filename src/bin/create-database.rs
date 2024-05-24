@@ -1,6 +1,7 @@
 use clap::Parser;
+use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
-use log::{debug, info};
+use log::info;
 use musk::io::{dump_data_to_file, load_data_from_file};
 use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
 use musk::utility::{create_bitmap, get_range};
@@ -24,7 +25,7 @@ struct Args {
 
     #[arg(short, long, default_value_t = 0)]
     /// The index of the block to use
-    block_i: usize,
+    block_index: usize,
 
     #[arg(short, long)]
     /// The directory prefix of the fasta files
@@ -33,6 +34,10 @@ struct Args {
     #[arg(short, long)]
     /// The directory prefix of the fasta files
     new_directory_prefix: Option<String>,
+
+    #[arg(short, long)]
+    /// The directory prefix of the fasta files
+    full_matrix_ordering: Option<String>,
 
     #[arg()]
     /// the file2taxid file
@@ -62,22 +67,19 @@ fn main() {
             .collect_vec();
     }
     info!("creating roaring bitmaps for each group...");
-    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, args.log_blocks, args.block_i);
+    let (lowest_kmer, highest_kmer) =
+        get_range(args.kmer_length, args.log_blocks, args.block_index);
     let bitmaps = ordering
         .into_par_iter()
-        .map(|(files, _taxid)| {
-            create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer)
-        })
+        .progress()
+        .map(|(files, _taxid)| create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer))
         .collect::<Vec<RoaringBitmap>>();
-    info!("kmer vectors computed, creating database...");
+    info!("roaring bitmaps computed, creating database...");
 
     let mut database = vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
-    for (index, bitmap) in bitmaps.into_iter().enumerate() {
+    for (index, bitmap) in bitmaps.into_iter().progress().enumerate() {
         for kmer in bitmap {
             database[kmer as usize].push(index);
-        }
-        if index % 1000 == 0 && index != 0 {
-            debug!("done inserting {} bitmaps into the database", index);
         }
     }
     let naive_runs = database

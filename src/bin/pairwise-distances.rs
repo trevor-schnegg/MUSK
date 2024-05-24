@@ -1,6 +1,7 @@
 use clap::Parser;
+use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
-use log::{debug, info};
+use log::info;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
@@ -27,7 +28,7 @@ struct Args {
 
     #[arg(short, long, default_value_t = 0)]
     /// The index of the block to use
-    block_i: usize,
+    block_index: usize,
 
     #[arg(short, long)]
     /// The directory prefix of the fasta files
@@ -66,17 +67,14 @@ fn main() {
     }
     info!("{} groups total", file2taxid.len());
     info!("creating roaring bitmaps for each group...");
-    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, args.log_blocks, args.block_i);
+    let (lowest_kmer, highest_kmer) =
+        get_range(args.kmer_length, args.log_blocks, args.block_index);
     let bitmaps = file2taxid
         .into_par_iter()
+        .progress()
         .map(|(files, taxid)| {
             (
-                create_bitmap(
-                    files.clone(),
-                    args.kmer_length,
-                    lowest_kmer,
-                    highest_kmer,
-                ),
+                create_bitmap(files.clone(), args.kmer_length, lowest_kmer, highest_kmer),
                 files,
                 taxid,
             )
@@ -85,11 +83,9 @@ fn main() {
     info!("roaring bitmaps computed, creating distance matrix...");
     let all_distances = bitmaps
         .par_iter()
+        .progress()
         .enumerate()
         .map(|(index_1, (bitmap_1, files_1, taxid_1))| {
-            if index_1 % 100 == 0 && index_1 != 0 {
-                debug!("starting index {}", index_1);
-            }
             let inner_distances = bitmaps
                 .par_iter()
                 .enumerate()
@@ -108,6 +104,7 @@ fn main() {
             (inner_distances, files_1.clone(), *taxid_1)
         })
         .collect::<Vec<(Vec<u32>, String, u32)>>();
+    info!("distance matrix completed! outputting to file");
 
     dump_data_to_file(
         bincode::serialize(&all_distances).unwrap(),
