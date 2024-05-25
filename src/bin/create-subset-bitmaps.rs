@@ -1,4 +1,5 @@
 use clap::Parser;
+use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use log::info;
 use musk::{
@@ -13,7 +14,6 @@ use rand::{
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::{collections::HashSet, path::Path};
-use indicatif::ParallelProgressIterator;
 
 fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> RoaringBitmap {
     let mut bitset = RoaringBitmap::new();
@@ -73,10 +73,7 @@ fn main() {
         .into_iter()
         .map(|(files, taxid)| {
             (
-                files.replace(
-                    &*args.old_directory_prefix,
-                    &*args.new_directory_prefix,
-                ),
+                files.replace(&*args.old_directory_prefix, &*args.new_directory_prefix),
                 taxid,
             )
         })

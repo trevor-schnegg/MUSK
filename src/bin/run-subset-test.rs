@@ -1,6 +1,9 @@
 use clap::Parser;
 use itertools::Itertools;
-use musk::{io::load_data_from_file, rle::{Run, RunLengthEncoding}};
+use musk::{
+    io::load_data_from_file,
+    rle::{Run, RunLengthEncoding},
+};
 use std::path::Path;
 
 /// Creates a sample of k-mers from the matrix
@@ -23,5 +26,13 @@ fn main() {
     let subset_rles = load_data_from_file::<Vec<(u32, RunLengthEncoding)>>(subset_rles_path);
 
     println!("{:?}", subset_rles[0].1.get_vector());
-    println!("{:?}", subset_rles[0].1.get_vector().into_iter().map(|x| Run::from_u16(*x)).collect_vec());
+    println!(
+        "{:?}",
+        subset_rles[0]
+            .1
+            .get_vector()
+            .into_iter()
+            .map(|x| Run::from_u16(*x))
+            .collect_vec()
+    );
 }
