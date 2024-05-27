@@ -146,11 +146,11 @@ fn main() {
 
             info!("done computing distances for block {}! filling out matrix...", block.0);
 
-            let mut all_distances = vec![];
+            let mut all_distances: Vec<(Vec<u32>, String, u32)> = vec![];
             for index in 0..distances.len() {
                 let mut full_distance_vector = vec![];
-                for other_index in 0..index {
-                    full_distance_vector.push(distances[other_index].0[index - (other_index + 1)])
+                for prior_index in 0..index {
+                    full_distance_vector.push(all_distances[prior_index].0[index])
                 }
                 full_distance_vector.push(0);
                 full_distance_vector.append(&mut distances[index].0);
