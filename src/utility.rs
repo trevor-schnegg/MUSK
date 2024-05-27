@@ -1,8 +1,9 @@
 use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use roaring::RoaringBitmap;
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
@@ -10,7 +11,7 @@ use std::path::Path;
 
 use crate::kmer_iter::KmerIter;
 
-const XOR_NUMBER: usize = 188_888_881;
+pub const XOR_NUMBER: usize = 188_888_881;
 
 pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
     let dir_content =
@@ -149,4 +150,38 @@ pub fn create_bitmap(
         }
     }
     bitmap
+}
+
+pub fn find_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: usize) -> Vec<usize> {
+    let mut connected_indices = HashSet::from([start_index]);
+    let mut ordering = vec![start_index];
+    let mut current_index = start_index;
+    while ordering.len() < distances.len() {
+        let mut next_index = 0_usize;
+        let mut next_index_minimum = u32::MAX;
+        for (index, distance) in distances[current_index].0.iter().enumerate() {
+            if *distance < next_index_minimum && !connected_indices.contains(&index) {
+                next_index = index;
+                next_index_minimum = *distance;
+            }
+        }
+        ordering.push(next_index);
+        connected_indices.insert(next_index);
+        current_index = next_index;
+        if ordering.len() % 2500 == 0 {
+            debug!("found ordering for {} bitmaps", ordering.len());
+        }
+    }
+    ordering
+}
+
+pub fn average_hamming_distance(
+    ordering: &Vec<usize>,
+    distances: &Vec<(Vec<u32>, String, u32)>,
+) -> (f64, u64) {
+    let sum = ordering
+        .windows(2)
+        .map(|x| distances[x[0]].0[x[1]] as u64)
+        .sum();
+    (sum as f64 / (ordering.len() - 1) as f64, sum)
 }

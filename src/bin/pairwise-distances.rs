@@ -81,7 +81,7 @@ fn main() {
         })
         .collect::<Vec<(RoaringBitmap, String, u32)>>();
     info!("roaring bitmaps computed, creating distance matrix...");
-    let all_distances = bitmaps
+    let distances = bitmaps
         .par_iter()
         .progress()
         .enumerate()
@@ -107,7 +107,7 @@ fn main() {
     info!("distance matrix completed! outputting to file...");
 
     dump_data_to_file(
-        bincode::serialize(&all_distances).unwrap(),
+        bincode::serialize(&distances).unwrap(),
         output_file_path,
     )
     .unwrap();
