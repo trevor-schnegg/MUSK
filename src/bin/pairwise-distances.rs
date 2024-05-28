@@ -106,10 +106,6 @@ fn main() {
         .collect::<Vec<(Vec<u32>, String, u32)>>();
     info!("distance matrix completed! outputting to file...");
 
-    dump_data_to_file(
-        bincode::serialize(&distances).unwrap(),
-        output_file_path,
-    )
-    .unwrap();
+    dump_data_to_file(bincode::serialize(&distances).unwrap(), output_file_path).unwrap();
     info!("done!");
 }

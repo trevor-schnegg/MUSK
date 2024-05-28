@@ -1,9 +1,12 @@
 use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
-use log::{debug, info};
+use log::info;
 use musk::{
-    io::{load_data_from_file, load_string2taxid}, kmer_iter::KmerIter, rle::{BuildRunLengthEncoding, RunLengthEncoding}, utility::{average_hamming_distance, find_ordering, get_fasta_iterator_of_file, get_range, XOR_NUMBER}
+    io::{load_data_from_file, load_string2taxid},
+    kmer_iter::KmerIter,
+    rle::{BuildRunLengthEncoding, RunLengthEncoding},
+    utility::{find_ordering, get_fasta_iterator_of_file, get_range, XOR_NUMBER},
 };
 use rand::{
     distributions::{Distribution, Uniform},
@@ -11,9 +14,16 @@ use rand::{
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
-use std::{collections::{HashMap, HashSet}, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
-fn create_bitmaps(files: &str, kmer_length: usize, blocks: &Vec<(usize, usize, usize)>) -> Vec<RoaringBitmap> {
+fn create_bitmaps(
+    files: &str,
+    kmer_length: usize,
+    blocks: &Vec<(usize, usize, usize)>,
+) -> Vec<RoaringBitmap> {
     let mut bitmaps = vec![RoaringBitmap::new(); blocks.len()];
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -28,7 +38,7 @@ fn create_bitmaps(files: &str, kmer_length: usize, blocks: &Vec<(usize, usize, u
                         bitmaps[index].insert(kmer as u32);
                         break;
                     }
-                } 
+                }
             }
         }
     }
@@ -76,7 +86,10 @@ fn main() {
     let num_blocks_to_test = 64;
     let max_block_number = 2_usize.pow(args.log_blocks);
 
-    info!("randomly generating {} blocks to test...", num_blocks_to_test);
+    info!(
+        "randomly generating {} blocks to test...",
+        num_blocks_to_test
+    );
 
     let mut test_block_indices = HashSet::new();
     let mut rng = thread_rng();
@@ -85,26 +98,46 @@ fn main() {
         let sample = distribution.sample(&mut rng);
         test_block_indices.insert(sample);
     }
-    
-    let blocks = test_block_indices.into_iter().map(|block_index| {
-        let (low, high) = get_range(args.kmer_length, args.log_blocks, block_index);
-        (block_index, low, high)
-    }).collect_vec();
-    
-    info!("blocks generated! loading files2taxid at {} and full matrix ordering at {}...", args.file2taxid, args.matrix_ordering_file);
+
+    let blocks = test_block_indices
+        .into_iter()
+        .map(|block_index| {
+            let (low, high) = get_range(args.kmer_length, args.log_blocks, block_index);
+            (block_index, low, high)
+        })
+        .collect_vec();
+
+    info!(
+        "blocks generated! loading files2taxid at {} and full matrix ordering at {}...",
+        args.file2taxid, args.matrix_ordering_file
+    );
 
     let file2taxid = load_string2taxid(file2taxid_path);
     let matrix_ordering = load_data_from_file::<Vec<(String, u32)>>(matrix_ordering_file_path)
         .into_iter()
-        .map(|(files, taxid)| (files.replace(&*args.old_directory_prefix, &*args.new_directory_prefix), taxid))
+        .map(|(files, taxid)| {
+            (
+                files.replace(&*args.old_directory_prefix, &*args.new_directory_prefix),
+                taxid,
+            )
+        })
         .collect_vec();
 
-    info!("files2taxid loaded! creating roaring bitmaps for each group...");
+    info!(
+        "files2taxid and full matrix ordering loaded! creating roaring bitmaps for each group..."
+    );
 
-    let all_file_bitmaps = file2taxid.into_par_iter().progress().map(|(files, taxid)| {
-        let bitmaps = create_bitmaps(&*files, args.kmer_length, &blocks);
-        bitmaps.into_iter().map(|bitmap| (bitmap, files.clone(), taxid)).collect_vec()
-    }).collect::<Vec<Vec<(RoaringBitmap, String, u32)>>>();
+    let all_file_bitmaps = file2taxid
+        .into_par_iter()
+        .progress()
+        .map(|(files, taxid)| {
+            let bitmaps = create_bitmaps(&*files, args.kmer_length, &blocks);
+            bitmaps
+                .into_iter()
+                .map(|bitmap| (bitmap, files.clone(), taxid))
+                .collect_vec()
+        })
+        .collect::<Vec<Vec<(RoaringBitmap, String, u32)>>>();
     let mut block_to_bitmaps = HashMap::new();
     for block in blocks.iter() {
         block_to_bitmaps.insert(*block, vec![]);
@@ -144,92 +177,97 @@ fn main() {
             })
             .collect::<Vec<(Vec<u32>, String, u32)>>();
 
-            info!("done computing distances for block {}! filling out matrix...", block.0);
+        info!(
+            "done computing distances for block {}! filling out matrix...",
+            block.0
+        );
 
-            let mut all_distances: Vec<(Vec<u32>, String, u32)> = vec![];
-            for index in 0..distances.len() {
-                let mut full_distance_vector = vec![];
-                for prior_index in 0..index {
-                    full_distance_vector.push(all_distances[prior_index].0[index])
-                }
-                full_distance_vector.push(0);
-                full_distance_vector.append(&mut distances[index].0);
-                all_distances.push((
-                    full_distance_vector,
-                    distances[index].1.clone(),
-                    distances[index].2.clone(),
-                ));
+        let mut all_distances: Vec<(Vec<u32>, String, u32)> = vec![];
+        for index in 0..distances.len() {
+            let mut full_distance_vector = vec![];
+            for prior_index in 0..index {
+                full_distance_vector.push(all_distances[prior_index].0[index])
             }
+            full_distance_vector.push(0);
+            full_distance_vector.append(&mut distances[index].0);
+            all_distances.push((
+                full_distance_vector,
+                distances[index].1.clone(),
+                distances[index].2.clone(),
+            ));
+        }
+        drop(distances);
 
-            info!("done filling out matrix for block {}, finding ordering...", block.0);
+        info!(
+            "done filling out matrix for block {}, finding ordering...",
+            block.0
+        );
 
-            let block_ordering = find_ordering(&all_distances, 0);
-            let avg_dist_output = average_hamming_distance(&block_ordering, &all_distances);
-            debug!(
-                "average hamming distance of ordering: {} (total: {})",
-                avg_dist_output.0, avg_dist_output.1
-            );
-            let block_ordering = block_ordering
-                .into_iter()
-                .map(|x| (distances[x].1.clone(), distances[x].2))
-                .collect::<Vec<(String, u32)>>();
+        let block_ordering = find_ordering(&all_distances, 0)
+            .into_iter()
+            .map(|x| (all_distances[x].1.clone(), all_distances[x].2))
+            .collect::<Vec<(String, u32)>>();
+        drop(all_distances);
 
-            info!("ordering found for block {}! creating databases to compare to full matrix ordering for block {}...", block.0, block.0);
+        info!("ordering found for block {}! creating databases to compare to full matrix ordering for block {}...", block.0, block.0);
 
-            let bitmaps: HashMap<String, RoaringBitmap> = HashMap::from_iter(bitmaps.into_iter().map(|triple| (triple.1, triple.0)));
+        let bitmaps: HashMap<String, RoaringBitmap> =
+            HashMap::from_iter(bitmaps.into_iter().map(|triple| (triple.1, triple.0)));
 
-            let mut block_ordering_database =
-                vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
-            for (index, (files, _taxid)) in block_ordering.into_iter().progress().enumerate() {
-                let bitmap = bitmaps.get(&files).unwrap();
-                for kmer in bitmap {
-                    block_ordering_database[kmer as usize].push(index);
-                }
+        let mut block_ordering_database =
+            vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
+        for (index, (files, _taxid)) in block_ordering.into_iter().progress().enumerate() {
+            let bitmap = bitmaps.get(&files).unwrap();
+            for kmer in bitmap {
+                block_ordering_database[kmer as usize].push(index);
             }
-            let naive_block_ordering_runs = block_ordering_database
-                .iter()
-                .map(|build_rle| build_rle.get_vector().len())
-                .sum::<usize>();
-            let block_ordering_compressed_database = block_ordering_database
-                .into_par_iter()
-                .map(|build_rle| build_rle.to_rle())
-                .collect::<Vec<RunLengthEncoding>>();
-            let block_ordering_compressed_runs = block_ordering_compressed_database
-                .iter()
-                .map(|rle| rle.get_vector().len())
-                .sum::<usize>();
+        }
+        let naive_block_ordering_runs = block_ordering_database
+            .iter()
+            .map(|build_rle| build_rle.get_vector().len())
+            .sum::<usize>();
+        let block_ordering_compressed_database = block_ordering_database
+            .into_par_iter()
+            .map(|build_rle| build_rle.to_rle())
+            .collect::<Vec<RunLengthEncoding>>();
+        let block_ordering_compressed_runs = block_ordering_compressed_database
+            .iter()
+            .map(|rle| rle.get_vector().len())
+            .sum::<usize>();
+        drop(block_ordering_compressed_database);
 
-            let mut matrix_ordering_database =
-                vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
-            for (index, (files, _taxid)) in matrix_ordering.iter().progress().enumerate() {
-                let bitmap = bitmaps.get(files).unwrap();
-                for kmer in bitmap {
-                    matrix_ordering_database[kmer as usize].push(index);
-                }
+        let mut matrix_ordering_database =
+            vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
+        for (index, (files, _taxid)) in matrix_ordering.iter().progress().enumerate() {
+            let bitmap = bitmaps.get(files).unwrap();
+            for kmer in bitmap {
+                matrix_ordering_database[kmer as usize].push(index);
             }
-            let naive_matrix_ordering_runs = matrix_ordering_database
-                .iter()
-                .map(|build_rle| build_rle.get_vector().len())
-                .sum::<usize>();
-            let matrix_ordering_compressed_database = matrix_ordering_database
-                .into_par_iter()
-                .map(|build_rle| build_rle.to_rle())
-                .collect::<Vec<RunLengthEncoding>>();
-            let matrix_ordering_compressed_runs = matrix_ordering_compressed_database
-                .iter()
-                .map(|rle| rle.get_vector().len())
-                .sum::<usize>();
+        }
+        let naive_matrix_ordering_runs = matrix_ordering_database
+            .iter()
+            .map(|build_rle| build_rle.get_vector().len())
+            .sum::<usize>();
+        let matrix_ordering_compressed_database = matrix_ordering_database
+            .into_par_iter()
+            .map(|build_rle| build_rle.to_rle())
+            .collect::<Vec<RunLengthEncoding>>();
+        let matrix_ordering_compressed_runs = matrix_ordering_compressed_database
+            .iter()
+            .map(|rle| rle.get_vector().len())
+            .sum::<usize>();
+        drop(matrix_ordering_compressed_database);
 
-            println!(
-                "{}\t{}\t{}\t{}\t{}\t{}",
-                args.log_blocks,
-                block.0,
-                block_ordering_compressed_runs,
-                matrix_ordering_compressed_runs,
-                naive_block_ordering_runs,
-                naive_matrix_ordering_runs
-            );
+        println!(
+            "{}\t{}\t{}\t{}\t{}\t{}",
+            args.log_blocks,
+            block.0,
+            block_ordering_compressed_runs,
+            matrix_ordering_compressed_runs,
+            naive_block_ordering_runs,
+            naive_matrix_ordering_runs
+        );
 
-            info!("done!");
+        info!("done!");
     }
 }

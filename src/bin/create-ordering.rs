@@ -1,6 +1,9 @@
 use clap::Parser;
 use log::{debug, info};
-use musk::{io::{dump_data_to_file, load_data_from_file}, utility::{average_hamming_distance, find_ordering}};
+use musk::{
+    io::{dump_data_to_file, load_data_from_file},
+    utility::{average_hamming_distance, find_ordering},
+};
 use std::path::Path;
 
 /// Creates an ordering of files based on distances between bitmaps
