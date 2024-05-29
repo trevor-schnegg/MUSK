@@ -1,13 +1,10 @@
 use clap::Parser;
-use indicatif::ParallelProgressIterator;
+use indicatif::ProgressIterator;
 use log::info;
 use musk::io::load_string2taxid;
 use musk::utility::{create_bitmap, get_range};
-use rayon::iter::IntoParallelIterator;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::mpsc;
-use rayon::prelude::*;
 
 /// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
 #[derive(Parser)]
@@ -37,12 +34,9 @@ fn main() {
     
     info!("getting kmer counts...");
     
-    let (sender, reciever) = mpsc::channel();
-    let _done_with_string2taxid = load_string2taxid(files2taxid).into_par_iter().progress().map_with(sender, |s, x| {
-        s.send(create_bitmap(x.0.clone(), args.kmer_length, lowest_kmer, highest_kmer)).unwrap();
-        x
-    }).collect::<Vec<(String, u32)>>();
-    for bitmap in reciever.into_iter() {
+    for bitmap in load_string2taxid(files2taxid).into_iter().progress().map(|(files, _taxid)| {
+        create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer)
+    }) {
         for kmer in bitmap {
             kmer_counts[kmer as usize] += 1;
         }
