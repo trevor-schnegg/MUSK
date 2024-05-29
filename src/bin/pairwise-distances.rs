@@ -74,7 +74,13 @@ fn main() {
         .progress()
         .map(|(files, taxid)| {
             (
-                create_bitmap(files.clone(), args.kmer_length, lowest_kmer, highest_kmer),
+                create_bitmap(
+                    files.clone(),
+                    args.kmer_length,
+                    lowest_kmer,
+                    highest_kmer,
+                    true,
+                ),
                 files,
                 taxid,
             )

@@ -77,7 +77,13 @@ fn main() {
             .map(|(files, _taxid)| {
                 (
                     files.clone(),
-                    create_bitmap(files.clone(), args.kmer_length, lowest_kmer, highest_kmer),
+                    create_bitmap(
+                        files.clone(),
+                        args.kmer_length,
+                        lowest_kmer,
+                        highest_kmer,
+                        true,
+                    ),
                 )
             })
             .collect::<Vec<(String, RoaringBitmap)>>()
