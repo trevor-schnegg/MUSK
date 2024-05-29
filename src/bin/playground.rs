@@ -1,14 +1,16 @@
-// use musk::kmer_iter::KmerIter;
+use musk::kmer_iter::KmerIter;
 
 use itertools::Itertools;
 use musk::rle::{BuildRunLengthEncoding, Run};
 
 fn main() {
-    // let seq = "ATGCTGA".as_bytes();
-    // let mut seq_iter = KmerIter::from(seq, 3);
-    // while let Some(kmer) = seq_iter.next() {
-    //     println!("{:08b}", kmer);
-    // }
+    let seq = "ATGCTGA".as_bytes();
+    let mut seq_iter = KmerIter::from(seq, 3);
+    while let Some(kmer) = seq_iter.next() {
+        println!("{:06b}", kmer);
+        let (forward_kmer, rev_comp_kmer) = seq_iter.get_curr_kmers();
+        println!("kmer: {:06b}, rev comp kmer: {:06b}", forward_kmer, rev_comp_kmer);
+    }
 
     let _maximum = (1_usize << 14) - 1;
 

@@ -5,11 +5,11 @@ use std::slice::Iter;
 const COMPLEMENT: [usize; 4] = [3, 2, 1, 0];
 
 pub struct KmerIter<'a> {
-    base2integer: HashMap<u8, usize>,
-    character_iterator: Iter<'a, u8>,
+    base2int: HashMap<u8, usize>,
+    char_iter: Iter<'a, u8>,
     clear_bits: usize,
-    current_kmer: usize,
-    current_reverse_complement_kmer: usize,
+    curr_kmer: usize,
+    curr_rev_comp_kmer: usize,
     first_letter_shift: usize,
     initialized: bool,
     kmer_length: usize,
@@ -28,11 +28,11 @@ impl<'a> KmerIter<'a> {
             (b't', 3_usize),
         ]);
         KmerIter {
-            base2integer: base2int,
-            character_iterator: sequence.iter(),
+            base2int,
+            char_iter: sequence.iter(),
             clear_bits: 2_usize.pow((kmer_length * 2) as u32) - 1,
-            current_kmer: 0,
-            current_reverse_complement_kmer: 0,
+            curr_kmer: 0,
+            curr_rev_comp_kmer: 0,
             first_letter_shift: (kmer_length - 1) * 2,
             initialized: false,
             kmer_length,
@@ -43,12 +43,12 @@ impl<'a> KmerIter<'a> {
         let mut buffer = 0;
         let mut position = 0_usize;
         while position < self.kmer_length {
-            match self.character_iterator.next() {
+            match self.char_iter.next() {
                 None => {
                     return None;
                 }
                 Some(c) => {
-                    match self.base2integer.get(c) {
+                    match self.base2int.get(c) {
                         None => {
                             // Encountered a character that isn't A (a), C (c), G (g), or T (t)
                             buffer = 0;
@@ -63,9 +63,9 @@ impl<'a> KmerIter<'a> {
                 }
             }
         }
-        self.current_kmer = buffer;
-        self.current_reverse_complement_kmer = self.reverse_compliment(buffer);
-        Some(min(self.current_kmer, self.current_reverse_complement_kmer))
+        self.curr_kmer = buffer;
+        self.curr_rev_comp_kmer = self.reverse_compliment(buffer);
+        Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
     }
 
     /// Only call this if I already have an actual k-mer
@@ -82,6 +82,10 @@ impl<'a> KmerIter<'a> {
         }
         buffer
     }
+
+    pub fn get_curr_kmers(&self) -> (usize, usize) {
+        (self.curr_kmer, self.curr_rev_comp_kmer)
+    }
 }
 
 impl<'a> Iterator for KmerIter<'a> {
@@ -92,26 +96,26 @@ impl<'a> Iterator for KmerIter<'a> {
             self.initialized = true;
             self.find_next_kmer()
         } else {
-            match self.character_iterator.next() {
+            match self.char_iter.next() {
                 None => {
                     return None;
                 }
                 Some(character) => {
-                    match self.base2integer.get(character) {
+                    match self.base2int.get(character) {
                         None => {
                             // Encountered a character that isn't A (a), C (c), G (g), or T (t)
                             self.find_next_kmer()
                         }
                         Some(integer) => {
-                            self.current_kmer <<= 2;
-                            self.current_kmer |= *integer;
-                            self.current_kmer &= self.clear_bits;
+                            self.curr_kmer <<= 2;
+                            self.curr_kmer |= *integer;
+                            self.curr_kmer &= self.clear_bits;
 
-                            self.current_reverse_complement_kmer >>= 2;
-                            self.current_reverse_complement_kmer |=
+                            self.curr_rev_comp_kmer >>= 2;
+                            self.curr_rev_comp_kmer |=
                                 COMPLEMENT[*integer] << self.first_letter_shift;
 
-                            Some(min(self.current_kmer, self.current_reverse_complement_kmer))
+                            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
                         }
                     }
                 }
