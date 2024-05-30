@@ -3,6 +3,22 @@ use musk::kmer_iter::KmerIter;
 use itertools::Itertools;
 use musk::rle::{BuildRunLengthEncoding, Run};
 
+const CLEAR_BITS: usize = 2_usize.pow((14 * 2) as u32) - 1;
+
+fn reverse_compliment(kmer: usize) -> usize {
+    let mut buffer = 0;
+    let mut complement_kmer = (!kmer) & CLEAR_BITS;
+    for _ in 0..14 {
+        // Pop the right-most letter
+        let letter = complement_kmer & 3;
+        complement_kmer >>= 2;
+        // Add to the right of the buffer
+        buffer <<= 2;
+        buffer |= letter;
+    }
+    buffer
+}
+
 fn main() {
     let seq = "ATGCTGA".as_bytes();
     let mut seq_iter = KmerIter::from(seq, 3);
@@ -37,4 +53,12 @@ fn main() {
             .map(|x| Run::from_u16(*x))
             .collect_vec()
     );
+
+    let mut palendrome_count = 0_usize;
+    for i in 0..4_usize.pow(14) {
+        if i == reverse_compliment(i) {
+            palendrome_count += 1;
+        }
+    }   
+    println!("palendromes for 14-mers: {}", palendrome_count);
 }
