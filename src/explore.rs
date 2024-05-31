@@ -19,16 +19,19 @@ fn create_graph(bitmaps: Vec<RoaringBitmap>) -> Vec<Vec<f64>> {
         .progress()
         .enumerate()
         .map(|(index_1, bitmap_1)| {
-            let mut similarities = bitmaps[..index_1]
+            bitmaps[..=index_1]
                 .par_iter()
-                .map(|bitmap_2| {
-                    let intersection_size = bitmap_1.intersection_len(bitmap_2);
-                    let union_size = bitmap_1.union_len(bitmap_2);
-                    intersection_size as f64 / union_size as f64
+                .enumerate()
+                .map(|(index_2, bitmap_2)| {
+                    if index_1 == index_2 {
+                        1.0
+                    } else {
+                        let intersection_size = bitmap_1.intersection_len(bitmap_2);
+                        let union_size = bitmap_1.union_len(bitmap_2);
+                        intersection_size as f64 / union_size as f64
+                    }
                 })
-                .collect::<Vec<f64>>();
-            similarities.push(0.0);
-            similarities
+                .collect::<Vec<f64>>()
         })
         .collect::<Vec<Vec<f64>>>()
 }
@@ -57,9 +60,9 @@ fn bfs_helper(
     let mut connected_component = Vec::from([start_node]);
     while !queue.is_empty() {
         let node = queue.pop_front().unwrap();
-        for (index, similarity) in graph[node][..node]
+        for (index, similarity) in graph[node]
             .iter()
-            .chain(graph[node..].iter().map(|vec| &vec[node]))
+            .chain(graph[node+1..].iter().map(|vec| &vec[node]))
             .enumerate()
         {
             if explored.contains(&index) {

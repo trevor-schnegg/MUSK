@@ -154,14 +154,17 @@ pub fn create_bitmap(
     bitmap
 }
 
-pub fn find_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: usize) -> Vec<usize> {
+pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: usize) -> Vec<usize> {
     let mut connected_indices = HashSet::from([start_index]);
     let mut ordering = vec![start_index];
     let mut current_index = start_index;
     while ordering.len() < distances.len() {
         let mut next_index = 0_usize;
         let mut next_index_minimum = u32::MAX;
-        for (index, distance) in distances[current_index].0.iter().enumerate() {
+        for (index, distance) in distances[current_index].0
+            .iter()
+            .chain(distances[current_index+1..].iter().map(|tuple| &tuple.0[current_index]))
+            .enumerate() {
             if *distance < next_index_minimum && !connected_indices.contains(&index) {
                 next_index = index;
                 next_index_minimum = *distance;
@@ -183,7 +186,12 @@ pub fn average_hamming_distance(
 ) -> (f64, u64) {
     let sum = ordering
         .windows(2)
-        .map(|x| distances[x[0]].0[x[1]] as u64)
+        .map(|x| {
+            if x[0] < x[1] {
+                distances[x[1]].0[x[0]] as u64
+            } else {
+                distances[x[0]].0[x[1]] as u64
+            }})
         .sum();
     (sum as f64 / (ordering.len() - 1) as f64, sum)
 }
