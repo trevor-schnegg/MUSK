@@ -23,7 +23,7 @@ fn create_bitmaps(files: &Vec<String>, kmer_length: usize, thread_number: usize)
                 if record.seq().len() < kmer_length {
                     continue;
                 }
-                for kmer in KmerIter::from(record.seq(), kmer_length) {
+                for kmer in KmerIter::from(record.seq(), kmer_length, false) {
                     kmer_set.insert(kmer as u32);
                 }
             }

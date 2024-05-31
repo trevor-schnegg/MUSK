@@ -39,7 +39,7 @@ fn main() {
     let bitmaps = load_string2taxid(files2taxid)
         .into_par_iter()
         .progress()
-        .map(|(files, _taxid)| create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer, false))
+        .map(|(files, _taxid)| create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer, false, false))
         .collect::<Vec<RoaringBitmap>>();
 
     for bitmap in bitmaps {

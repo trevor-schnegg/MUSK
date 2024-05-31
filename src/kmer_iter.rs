@@ -6,6 +6,7 @@ const COMPLEMENT: [usize; 4] = [3, 2, 1, 0];
 
 pub struct KmerIter<'a> {
     base2int: HashMap<u8, usize>,
+    canonical: bool,
     char_iter: Iter<'a, u8>,
     clear_bits: usize,
     curr_kmer: usize,
@@ -16,7 +17,7 @@ pub struct KmerIter<'a> {
 }
 
 impl<'a> KmerIter<'a> {
-    pub fn from(sequence: &'a [u8], kmer_length: usize) -> Self {
+    pub fn from(sequence: &'a [u8], kmer_length: usize, canonical: bool) -> Self {
         let base2int = HashMap::from([
             (b'A', 0_usize),
             (b'a', 0_usize),
@@ -29,6 +30,7 @@ impl<'a> KmerIter<'a> {
         ]);
         KmerIter {
             base2int,
+            canonical,
             char_iter: sequence.iter(),
             clear_bits: 2_usize.pow((kmer_length * 2) as u32) - 1,
             curr_kmer: 0,
@@ -65,7 +67,11 @@ impl<'a> KmerIter<'a> {
         }
         self.curr_kmer = buffer;
         self.curr_rev_comp_kmer = self.reverse_compliment(buffer);
-        Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+        if self.canonical {
+            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+        } else {
+            Some(self.curr_kmer)
+        }
     }
 
     /// Only call this if I already have an actual k-mer
@@ -115,7 +121,11 @@ impl<'a> Iterator for KmerIter<'a> {
                             self.curr_rev_comp_kmer |=
                                 COMPLEMENT[*integer] << self.first_letter_shift;
 
-                            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+                            if self.canonical {
+                                Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+                            } else {
+                                Some(self.curr_kmer)
+                            }
                         }
                     }
                 }

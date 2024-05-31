@@ -31,7 +31,7 @@ fn create_bitmaps(
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, false) {
                 let kmer = kmer ^ XOR_NUMBER;
                 for (index, block) in blocks.iter().enumerate() {
                     if block.1 <= kmer && kmer < block.2 {

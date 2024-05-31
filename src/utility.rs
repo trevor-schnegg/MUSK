@@ -134,6 +134,7 @@ pub fn create_bitmap(
     lowest_kmer: usize,
     highest_kmer: usize,
     xor: bool,
+    canonical: bool,
 ) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
     for file in files.split(",") {
@@ -142,7 +143,7 @@ pub fn create_bitmap(
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, canonical) {
                 let kmer = if xor { kmer ^ XOR_NUMBER } else { kmer };
                 if lowest_kmer <= kmer && kmer < highest_kmer {
                     bitmap.insert(kmer as u32);

@@ -82,7 +82,8 @@ fn main() {
                         args.kmer_length,
                         lowest_kmer,
                         highest_kmer,
-                        true,
+                        false,
+                        false,
                     ),
                 )
             })

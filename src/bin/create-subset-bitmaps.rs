@@ -23,7 +23,7 @@ fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> Roar
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length).map(|kmer| kmer as u32) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, false).map(|kmer| kmer as u32) {
                 if subset.contains(&kmer) {
                     bitset.insert(kmer);
                 }

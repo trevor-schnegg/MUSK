@@ -21,7 +21,7 @@ fn reverse_compliment(kmer: usize) -> usize {
 
 fn main() {
     let seq = "ATGCTGA".as_bytes();
-    let mut seq_iter = KmerIter::from(seq, 3);
+    let mut seq_iter = KmerIter::from(seq, 3, false);
     while let Some(kmer) = seq_iter.next() {
         println!("{:06b}", kmer);
         let (forward_kmer, rev_comp_kmer) = seq_iter.get_curr_kmers();
