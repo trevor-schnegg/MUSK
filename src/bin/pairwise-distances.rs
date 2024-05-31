@@ -88,18 +88,16 @@ fn main() {
         .progress()
         .enumerate()
         .map(|(index_1, (bitmap_1, files_1, taxid_1))| {
-            let inner_distances = bitmaps
+            let inner_distances = bitmaps[..=index_1]
                 .par_iter()
                 .enumerate()
-                .filter_map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
-                    if index_2 <= index_1 {
-                        None
+                .map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
+                    if index_1 == index_2 {
+                        0
                     } else {
                         let intersection_size = bitmap_1.intersection_len(bitmap_2);
                         // |A| + |B| - (2 * |A & B|)
-                        let distance =
-                            (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32;
-                        Some(distance)
+                        (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32
                     }
                 })
                 .collect::<Vec<u32>>();
