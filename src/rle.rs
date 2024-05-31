@@ -1,3 +1,5 @@
+use std::result::Iter;
+
 use itertools::Itertools;
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -208,4 +210,18 @@ fn decompress_buffer(buffer: &Vec<Run>) -> u16 {
         }
     }
     decompressed
+}
+
+pub struct RunLengthEncodingIter<'a> {
+    current_index: usize,
+    current_iter: Option<Iter<'a, usize>>,
+    run_iter: &'a Vec<u16>,
+}
+
+impl<'a> Iterator for RunLengthEncodingIter<'a> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
 }
