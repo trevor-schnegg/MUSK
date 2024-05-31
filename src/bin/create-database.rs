@@ -78,7 +78,7 @@ fn main() {
                 (
                     files.clone(),
                     create_bitmap(
-                        files.clone(),
+                        &*files,
                         args.kmer_length,
                         lowest_kmer,
                         highest_kmer,

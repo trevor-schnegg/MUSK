@@ -129,7 +129,7 @@ pub fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (us
 }
 
 pub fn create_bitmap(
-    files: String,
+    files: &str,
     kmer_length: usize,
     lowest_kmer: usize,
     highest_kmer: usize,

@@ -41,7 +41,7 @@ fn main() {
         .progress()
         .map(|(files, _taxid)| {
             create_bitmap(
-                files,
+                &*files,
                 args.kmer_length,
                 lowest_kmer,
                 highest_kmer,
