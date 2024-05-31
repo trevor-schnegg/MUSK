@@ -25,7 +25,10 @@ fn main() {
     while let Some(kmer) = seq_iter.next() {
         println!("{:06b}", kmer);
         let (forward_kmer, rev_comp_kmer) = seq_iter.get_curr_kmers();
-        println!("kmer: {:06b}, rev comp kmer: {:06b}", forward_kmer, rev_comp_kmer);
+        println!(
+            "kmer: {:06b}, rev comp kmer: {:06b}",
+            forward_kmer, rev_comp_kmer
+        );
     }
 
     let _maximum = (1_usize << 14) - 1;
@@ -59,6 +62,6 @@ fn main() {
         if i == reverse_compliment(i) {
             palendrome_count += 1;
         }
-    }   
+    }
     println!("palendromes for 14-mers: {}", palendrome_count);
 }
