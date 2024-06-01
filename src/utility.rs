@@ -161,10 +161,16 @@ pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: us
     while ordering.len() < distances.len() {
         let mut next_index = 0_usize;
         let mut next_index_minimum = u32::MAX;
-        for (index, distance) in distances[current_index].0
+        for (index, distance) in distances[current_index]
+            .0
             .iter()
-            .chain(distances[current_index+1..].iter().map(|tuple| &tuple.0[current_index]))
-            .enumerate() {
+            .chain(
+                distances[current_index + 1..]
+                    .iter()
+                    .map(|tuple| &tuple.0[current_index]),
+            )
+            .enumerate()
+        {
             if *distance < next_index_minimum && !connected_indices.contains(&index) {
                 next_index = index;
                 next_index_minimum = *distance;
@@ -191,7 +197,8 @@ pub fn average_hamming_distance(
                 distances[x[1]].0[x[0]] as u64
             } else {
                 distances[x[0]].0[x[1]] as u64
-            }})
+            }
+        })
         .sum();
     (sum as f64 / (ordering.len() - 1) as f64, sum)
 }

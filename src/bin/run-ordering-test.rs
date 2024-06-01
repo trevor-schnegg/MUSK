@@ -6,7 +6,7 @@ use musk::{
     io::{load_data_from_file, load_string2taxid},
     kmer_iter::KmerIter,
     rle::{BuildRunLengthEncoding, RunLengthEncoding},
-    utility::{greedy_ordering, get_fasta_iterator_of_file, get_range, XOR_NUMBER},
+    utility::{get_fasta_iterator_of_file, get_range, greedy_ordering, XOR_NUMBER},
 };
 use rand::{
     distributions::{Distribution, Uniform},

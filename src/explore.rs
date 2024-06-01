@@ -62,7 +62,7 @@ fn bfs_helper(
         let node = queue.pop_front().unwrap();
         for (index, similarity) in graph[node]
             .iter()
-            .chain(graph[node+1..].iter().map(|vec| &vec[node]))
+            .chain(graph[node + 1..].iter().map(|vec| &vec[node]))
             .enumerate()
         {
             if explored.contains(&index) {
