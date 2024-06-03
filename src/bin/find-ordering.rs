@@ -40,7 +40,6 @@ fn main() {
     info!("loading distances at {}", args.distances);
     let distances = load_data_from_file::<Vec<(Vec<u32>, String, u32)>>(distances_file);
     debug!("length of distances: {}", distances.len());
-    info!("distances loaded!, filling out matrix...");
 
     let ordering = if args.lin_kernighan {
         let dist_mat = LowerDistanceMatrix::new(
