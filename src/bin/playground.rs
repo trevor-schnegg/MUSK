@@ -1,4 +1,7 @@
-use musk::{kmer_iter::KmerIter, rle::{Run, RunLengthEncodingIter}};
+use musk::{
+    kmer_iter::KmerIter,
+    rle::{Run, RunLengthEncodingIter},
+};
 
 use itertools::Itertools;
 use musk::rle::BuildRunLengthEncoding;
@@ -45,8 +48,15 @@ fn main() {
     }
     let rle_1 = build_rle_1.to_rle();
 
-    println!("{:?}", rle_1.get_vector().into_iter().map(|x| Run::from_u16(*x)).collect_vec());
-    
+    println!(
+        "{:?}",
+        rle_1
+            .get_vector()
+            .into_iter()
+            .map(|x| Run::from_u16(*x))
+            .collect_vec()
+    );
+
     let ground_truth = dense_vector.into_iter();
     let test_rle = RunLengthEncodingIter::from_runs_vector(rle_1.get_vector());
     for (x, y) in ground_truth.zip(test_rle) {
