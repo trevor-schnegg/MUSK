@@ -1,10 +1,34 @@
 use clap::Parser;
-use indicatif::ProgressIterator;
+use indicatif::ParallelProgressIterator;
+use itertools::Itertools;
 use log::info;
 use musk::io::load_string2taxid;
-use musk::utility::{create_bitmap, get_range};
-use std::collections::HashMap;
+use musk::kmer_iter::KmerIter;
+use musk::utility::get_fasta_iterator_of_file;
+use rayon::iter::IntoParallelIterator;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use rayon::prelude::*;
+
+
+fn create_kmer_vec(
+    files: String,
+    kmer_length: usize,
+) -> Vec<usize> {
+    let mut set = HashSet::new();
+    for file in files.split(",") {
+        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
+        while let Some(Ok(record)) = record_iter.next() {
+            if record.seq().len() < kmer_length {
+                continue;
+            }
+            for kmer in KmerIter::from(record.seq(), kmer_length) {
+                set.insert(kmer);
+            }
+        }
+    }
+    set.into_iter().collect_vec()
+}
 
 /// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
 #[derive(Parser)]
@@ -29,16 +53,15 @@ fn main() {
 
     let mut kmer_counts = vec![0_usize; 4_usize.pow(args.kmer_length as u32)];
 
-    let (lowest_kmer, highest_kmer) =
-        get_range(args.kmer_length, 0, 0);
-    
     info!("getting kmer counts...");
     
-    for bitmap in load_string2taxid(files2taxid).into_iter().progress().map(|(files, _taxid)| {
-        create_bitmap(files, args.kmer_length, lowest_kmer, highest_kmer)
-    }) {
-        for kmer in bitmap {
-            kmer_counts[kmer as usize] += 1;
+    let kmer_vecs = load_string2taxid(files2taxid).into_par_iter().progress().map(|(files, _taxid)| {
+        create_kmer_vec(files, args.kmer_length)
+    }).collect::<Vec<Vec<usize>>>();
+
+    for kmer_vec in kmer_vecs {
+        for kmer in kmer_vec {
+            kmer_counts[kmer] += 1;
         }
     }
 
@@ -46,9 +69,15 @@ fn main() {
 
     let mut num_ones_to_count = HashMap::new();
 
-    for count in kmer_counts {
-        match num_ones_to_count.get_mut(&count) {
-            None => {num_ones_to_count.insert(count, 1);},
+    for (kmer, number_of_ones) in kmer_counts.iter().enumerate() {
+        println!("{}\t{}", kmer, number_of_ones);
+    }
+
+    println!("========== END INDIVIDUAL KMERS ==========");
+
+    for num_ones in kmer_counts {
+        match num_ones_to_count.get_mut(&num_ones) {
+            None => {num_ones_to_count.insert(num_ones, 1_usize);},
             Some(count) => *count += 1,
         }
     }
