@@ -39,6 +39,7 @@ fn main() {
 
     info!("file2taxid loaded! exploring files with the same tax id");
 
+    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, 0, 0);
     for (taxid, files) in taxid2files {
         if files.len() == 1 {
             println!("{}\t{}", files[0], taxid);
@@ -49,7 +50,6 @@ fn main() {
             taxid,
             files.len()
         );
-        let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, 0, 0);
         let bitmaps = files
             .par_iter()
             .progress()
