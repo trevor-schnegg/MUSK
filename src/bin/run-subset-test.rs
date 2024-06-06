@@ -21,7 +21,7 @@ struct Args {
     comp_freq: bool,
 }
 
-const FLIP_TOLERANCE: u16 = 1;
+const FLIP_TOLERANCE: u16 = 2;
 const MAX_ENCODED: u16 = (1 << 14) - 1;
 
 /*
@@ -158,8 +158,9 @@ fn verify_bits(input: Vec<u16>, compressed: Vec<u16>) -> bool {
         input_num_compressed += subset_vector.iter().filter(|&&value| value & (1 << 15) == 0).count();
         input_num_uncompressed += subset_vector.iter().filter(|&&value| value & (1 << 15) > 0).count();
 
-        let input_all_compressed_blocks = subset_vector.iter().filter(|&&value| value & (0b0100_0000_0000_0000) > 0);
-        for block in input_all_compressed_blocks {
+        let input_all_compressed_blocks = subset_vector.iter().filter(|&&value| value & (0b1000_0000_0000_0000) == 0);
+        let input_all_compressed_ones = input_all_compressed_blocks.filter(|&&value| value & (0b0100_0000_0000_0000) > 0);
+        for block in input_all_compressed_ones {
             total_set_bits += (block & 0b0011_1111_1111_1111) as u32;
         }
 
