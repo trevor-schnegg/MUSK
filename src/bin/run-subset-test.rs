@@ -123,20 +123,21 @@ fn verify_bits(input: Vec<u16>, compressed: Vec<u16>) -> bool {
  *      - Data loss (number of bits flipped vs. number of uncompressed bits vs. total number of bits)
  *      - Summary statistics (percent improved compression, percent data loss)
  */
-fn attempt_compression(subset_rles_path: &Path) {
+ fn attempt_compression(subset_rles_path: &Path) {
     // load data from file and initialize variables to track statistics
     let subset_rles = load_data_from_file::<Vec<(u32, RunLengthEncoding)>>(subset_rles_path);
     let mut input_num_blocks = 0;
     let mut input_num_compressed = 0;
     let mut input_num_uncompressed = 0;
-
+    
     let mut final_num_blocks = 0;
     let mut final_num_compressed = 0;
     let mut final_num_uncompressed = 0;
-
+    
     let mut req_bit_flips: u32 = 0;
     let mut uncompressed_bits: u32 = 0;
     let mut total_bits: u32 = 0;
+    let mut total_set_bits: u32 = 0;
 
     // method checks if a neighboring value is compressed, whether it represents a run of 0s or 1s, and the count
     fn decode_neighbor(value: u16) -> Option<(u16, bool)> {
@@ -154,14 +155,13 @@ fn attempt_compression(subset_rles_path: &Path) {
 
         // update statistics for input file
         input_num_blocks += subset_vector.len();
-        input_num_compressed += subset_vector
-            .iter()
-            .filter(|&&value| value & (1 << 15) == 0)
-            .count();
-        input_num_uncompressed += subset_vector
-            .iter()
-            .filter(|&&value| value & (1 << 15) > 0)
-            .count();
+        input_num_compressed += subset_vector.iter().filter(|&&value| value & (1 << 15) == 0).count();
+        input_num_uncompressed += subset_vector.iter().filter(|&&value| value & (1 << 15) > 0).count();
+
+        let input_all_compressed_blocks = subset_vector.iter().filter(|&&value| value & (0b0100_0000_0000_0000) > 0);
+        for block in input_all_compressed_blocks {
+            total_set_bits += (block & 0b0011_1111_1111_1111) as u32;
+        }
 
         // initialize vector to hold result for this subset
         let mut result_vector = vec![];
@@ -178,7 +178,8 @@ fn attempt_compression(subset_rles_path: &Path) {
                 let count_ones = current_value.count_ones() as u16;
                 uncompressed_bits += 15;
                 total_bits += 15;
-
+                total_set_bits += count_ones as u32;
+                
                 let mut can_merge_prev = false;
                 let mut can_merge_next = false;
                 let mut block_count = 15;
@@ -187,10 +188,7 @@ fn attempt_compression(subset_rles_path: &Path) {
                     // retrieve the previous element - stored in the result_vector as the final element
                     let prev_value = result_vector[result_vector.len() - 1];
                     if let Some((count, is_zero)) = decode_neighbor(prev_value) {
-                        if count_ones <= FLIP_TOLERANCE
-                            && is_zero
-                            && count + block_count <= MAX_ENCODED
-                        {
+                        if count_ones <= FLIP_TOLERANCE && is_zero && count + block_count <= MAX_ENCODED {
                             can_merge_prev = true;
                             block_count += count;
                         }
@@ -201,10 +199,7 @@ fn attempt_compression(subset_rles_path: &Path) {
                     // retrieve the next element - stored at i + 1 in subset_vector
                     let next_value = subset_vector[i + 1];
                     if let Some((count, is_zero)) = decode_neighbor(next_value) {
-                        if count_ones <= FLIP_TOLERANCE
-                            && is_zero
-                            && count + block_count <= MAX_ENCODED
-                        {
+                        if count_ones <= FLIP_TOLERANCE && is_zero && count + block_count <= MAX_ENCODED {
                             can_merge_next = true;
                             block_count += count;
                         }
@@ -244,14 +239,8 @@ fn attempt_compression(subset_rles_path: &Path) {
         }
 
         final_num_blocks += result_vector.len();
-        final_num_compressed += result_vector
-            .iter()
-            .filter(|&&value| value & (1 << 15) == 0)
-            .count();
-        final_num_uncompressed += result_vector
-            .iter()
-            .filter(|&&value| value & (1 << 15) > 0)
-            .count();
+        final_num_compressed += result_vector.iter().filter(|&&value| value & (1 << 15) == 0).count();
+        final_num_uncompressed += result_vector.iter().filter(|&&value| value & (1 << 15) > 0).count();
 
         // basic error checking
         // subset_vector is a borrowed slice, needs to be converted to an owned vector
@@ -266,18 +255,15 @@ fn attempt_compression(subset_rles_path: &Path) {
     println!("Count of uncompressed elements: {}", input_num_uncompressed);
 
     println!("\nFinal number of elements: {}", final_num_blocks);
+    println!("Final count of compressed elements: {}", final_num_compressed);
+    println!("Final count of uncompressed elements: {}", final_num_uncompressed);
+   
     println!(
-        "Final count of compressed elements: {}",
-        final_num_compressed
-    );
-    println!(
-        "Final count of uncompressed elements: {}",
-        final_num_uncompressed
-    );
-
-    println!(
-        "Data loss: {} flips from {} uncompressed bits or {} total bits",
-        req_bit_flips, uncompressed_bits, total_bits,
+        "Data loss: {} flips from {} uncompressed bits or {} total bits or {} set bits",
+        req_bit_flips,
+        uncompressed_bits,
+        total_bits,
+        total_set_bits,
     );
 }
 
