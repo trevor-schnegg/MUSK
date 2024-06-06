@@ -6,15 +6,11 @@ use musk::io::load_string2taxid;
 use musk::kmer_iter::KmerIter;
 use musk::utility::get_fasta_iterator_of_file;
 use rayon::iter::IntoParallelIterator;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use rayon::prelude::*;
 
-
-fn create_kmer_vec(
-    files: String,
-    kmer_length: usize,
-) -> Vec<usize> {
+fn create_kmer_vec(files: String, kmer_length: usize) -> Vec<usize> {
     let mut set = HashSet::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -54,10 +50,12 @@ fn main() {
     let mut kmer_counts = vec![0_usize; 4_usize.pow(args.kmer_length as u32)];
 
     info!("getting kmer counts...");
-    
-    let kmer_vecs = load_string2taxid(files2taxid).into_par_iter().progress().map(|(files, _taxid)| {
-        create_kmer_vec(files, args.kmer_length)
-    }).collect::<Vec<Vec<usize>>>();
+
+    let kmer_vecs = load_string2taxid(files2taxid)
+        .into_par_iter()
+        .progress()
+        .map(|(files, _taxid)| create_kmer_vec(files, args.kmer_length))
+        .collect::<Vec<Vec<usize>>>();
 
     for kmer_vec in kmer_vecs {
         for kmer in kmer_vec {
@@ -77,7 +75,9 @@ fn main() {
 
     for num_ones in kmer_counts {
         match num_ones_to_count.get_mut(&num_ones) {
-            None => {num_ones_to_count.insert(num_ones, 1_usize);},
+            None => {
+                num_ones_to_count.insert(num_ones, 1_usize);
+            }
             Some(count) => *count += 1,
         }
     }
@@ -85,5 +85,4 @@ fn main() {
     for (num_ones, count) in num_ones_to_count {
         println!("{}\t{}", num_ones, count);
     }
-
 }
