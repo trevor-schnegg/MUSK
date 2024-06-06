@@ -4,6 +4,8 @@ debug/
 target/
 
 subset_rle.out
+subset_rle_old.out
+subset-test-out.txt
 
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
 # More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
