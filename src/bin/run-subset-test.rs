@@ -64,19 +64,23 @@ impl CompressionStats {
 
     fn print(&self) {
         println!("Input Statistics:");
-        println!("Total blocks: {}\nCompressed blocks: {}\nUncompressed blocks: {}",
-            self.in_num_elements,
-            self.in_num_compressed,
-            self.in_num_uncompressed);
+        println!(
+            "Total blocks: {}\nCompressed blocks: {}\nUncompressed blocks: {}",
+            self.in_num_elements, self.in_num_compressed, self.in_num_uncompressed
+        );
         println!("\nOutput Statistics:");
-        println!("Total blocks: {}\nCompressed blocks: {}\nUncompressed blocks: {}",
-            self.out_num_elements,
-            self.out_num_compressed,
-            self.out_num_uncompressed);
+        println!(
+            "Total blocks: {}\nCompressed blocks: {}\nUncompressed blocks: {}",
+            self.out_num_elements, self.out_num_compressed, self.out_num_uncompressed
+        );
         println!("\nData Loss:");
-        println!("{} bits flipped of {} total set bits", self.req_bit_flips, self.total_set_bits);
+        println!(
+            "{} bits flipped of {} total set bits",
+            self.req_bit_flips, self.total_set_bits
+        );
         if self.in_num_elements > 0 && self.total_set_bits > 0 {
-            let percent_compression = (1.0 - (self.out_num_elements as f64 / self.in_num_elements as f64)) * 100.0;
+            let percent_compression =
+                (1.0 - (self.out_num_elements as f64 / self.in_num_elements as f64)) * 100.0;
             let data_lost = (self.req_bit_flips as f64 / self.total_set_bits as f64) * 100.0;
             println!("\nSummary Statistics:");
             println!("{:.2}% reduction in size", percent_compression);
@@ -101,9 +105,12 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
 
     // iterate through each sample in subset_rles
     for subset in subset_rles.iter() {
-        let subset_vector = subset.1.get_vector().into_iter().map(|run| {
-            Run::from_u16(*run)
-        }).collect_vec();
+        let subset_vector = subset
+            .1
+            .get_vector()
+            .into_iter()
+            .map(|run| Run::from_u16(*run))
+            .collect_vec();
 
         // iterate through each element in the subset_vector
         for (i, current_element) in subset_vector.iter().enumerate() {
@@ -115,21 +122,21 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                     let count_ones = bits.count_ones() as usize;
                     if i > 0 {
                         match subset_vector[i - 1] {
-                            Run::Zeros(_) => {num_neighbors += 1},
-                            _ => {},
+                            Run::Zeros(_) => num_neighbors += 1,
+                            _ => {}
                         }
                     }
-                    
+
                     if i < subset_vector.len() - 1 {
                         match subset_vector[i + 1] {
-                            Run::Zeros(_) => {num_neighbors += 1},
-                            _ => {},
+                            Run::Zeros(_) => num_neighbors += 1,
+                            _ => {}
                         }
                     }
                     // update result
                     freq_matrix[count_ones - 1][num_neighbors] += 1;
-                },
-                _ => {},
+                }
+                _ => {}
             };
         }
     }
@@ -151,7 +158,7 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
  *      - There can be, at most, FLIP_TOLERANCE many set bits in the uncompressed block
  *      - At least one of the neighboring blocks (at position i - 1 or i + 1) must be a compressed block of zeros.
  *      - The resultant number of zeros across all combined blocks must be <= MAX_ENCODED
- *          - Method does NOT currently handle the case where neighbor blocks can not hold the additional bits 
+ *          - Method does NOT currently handle the case where neighbor blocks can not hold the additional bits
  *            individually, but could hold the additional bits if they were divided between the two neighbors.
  *
  * Method outputs the following statistics:
@@ -160,7 +167,7 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
  *      - Data loss (number of bits flipped vs. total number of set bits)
  *      - Summary statistics (percent improved compression, percent data loss)
  */
- fn attempt_compression(subset_rles_path: &Path) {
+fn attempt_compression(subset_rles_path: &Path) {
     // load data from file and initialize variables to track statistics
     let subset_rles = load_data_from_file::<Vec<(u32, RunLengthEncoding)>>(subset_rles_path);
 
@@ -168,14 +175,23 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
 
     // interate through each sample in the subset
     for subset in subset_rles.iter() {
-        let subset_vector = subset.1.get_vector().into_iter().map(|run| {
-            Run::from_u16(*run)
-        }).collect_vec();
+        let subset_vector = subset
+            .1
+            .get_vector()
+            .into_iter()
+            .map(|run| Run::from_u16(*run))
+            .collect_vec();
 
         // update compression statistics for input vector
         let num_elements = subset_vector.len() as u32;
-        let num_compressed = subset_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) == 0).count() as u32;
-        let num_uncompressed = subset_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) > 0).count() as u32;
+        let num_compressed = subset_vector
+            .iter()
+            .filter(|&value| Run::to_u16(value) & (1 << 15) == 0)
+            .count() as u32;
+        let num_uncompressed = subset_vector
+            .iter()
+            .filter(|&value| Run::to_u16(value) & (1 << 15) > 0)
+            .count() as u32;
         stats.add_input_stats(num_elements, num_compressed, num_uncompressed);
 
         let mut result_vector = vec![];
@@ -187,10 +203,10 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                 skip_next = false;
                 continue;
             }
-        
+
             match current_element {
                 Run::Uncompressed(bits) => {
-                    // dealing with uncompressed block, determine number of set bits 
+                    // dealing with uncompressed block, determine number of set bits
                     let count_ones = bits.count_ones() as u16;
                     stats.add_set_bits(count_ones as u32);
                     if count_ones <= FLIP_TOLERANCE {
@@ -210,8 +226,8 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                                     } else {
                                         false
                                     }
-                                },
-                                _ => {false},
+                                }
+                                _ => false,
                             };
                         }
 
@@ -225,8 +241,8 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                                     } else {
                                         false
                                     }
-                                },
-                                _ => {false},
+                                }
+                                _ => false,
                             };
                         }
 
@@ -250,7 +266,7 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                         let current_value = Run::to_u16(current_element);
                         result_vector.push(Run::from_u16(current_value));
                     }
-                },
+                }
                 Run::Ones(count) => {
                     stats.add_set_bits(*count as u32);
                     let current_value = Run::to_u16(current_element);
@@ -259,14 +275,20 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                 Run::Zeros(_) => {
                     let current_value = Run::to_u16(current_element);
                     result_vector.push(Run::from_u16(current_value));
-                },
+                }
             };
         }
 
         // update compression statistics for final vector
         let num_elements = result_vector.len() as u32;
-        let num_compressed = result_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) == 0).count() as u32;
-        let num_uncompressed = result_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) > 0).count() as u32;
+        let num_compressed = result_vector
+            .iter()
+            .filter(|&value| Run::to_u16(value) & (1 << 15) == 0)
+            .count() as u32;
+        let num_uncompressed = result_vector
+            .iter()
+            .filter(|&value| Run::to_u16(value) & (1 << 15) > 0)
+            .count() as u32;
         stats.add_output_stats(num_elements, num_compressed, num_uncompressed);
 
         if !verify_bits(subset_vector, result_vector) {
@@ -284,7 +306,7 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
  *
  * Returns true if the number of bits across both vectors is equal, otherwise false.
  */
- fn verify_bits(input: Vec<Run>, compressed: Vec<Run>) -> bool {
+fn verify_bits(input: Vec<Run>, compressed: Vec<Run>) -> bool {
     let mut input_bits: u32 = 0;
     let mut result_bits: u32 = 0;
 
@@ -292,13 +314,13 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
         match input_value {
             Run::Zeros(count) => {
                 input_bits += count as u32;
-            },
+            }
             Run::Ones(count) => {
                 input_bits += count as u32;
-            },
+            }
             Run::Uncompressed(_) => {
                 input_bits += 15;
-            },
+            }
         };
     }
 
@@ -306,13 +328,13 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
         match compressed_value {
             Run::Zeros(count) => {
                 result_bits += count as u32;
-            },
+            }
             Run::Ones(count) => {
                 result_bits += count as u32;
-            },
+            }
             Run::Uncompressed(_) => {
                 result_bits += 15;
-            },
+            }
         };
     }
 
