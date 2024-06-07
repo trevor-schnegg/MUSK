@@ -1,6 +1,5 @@
 use clap::Parser;
 use itertools::Itertools;
-// use itertools::Itertools;
 use musk::{
     io::load_data_from_file,
     rle::{Run, RunLengthEncoding},
@@ -17,12 +16,74 @@ struct Args {
     subset_rle: String,
 
     #[clap(short, long)]
-    // invoked with --comp-freq
+    // Invoked with --comp-freq or -c
     comp_freq: bool,
 }
 
-const FLIP_TOLERANCE: u16 = 2;
-const MAX_ENCODED: u16 = (1 << 14) - 1;
+// Constant defines the number of bits we are willing to flip in an unencoded block
+const FLIP_TOLERANCE: u16 = 1;
+
+#[derive(Default)]
+struct CompressionStats {
+    in_num_elements: u32,
+    in_num_compressed: u32,
+    in_num_uncompressed: u32,
+
+    out_num_elements: u32,
+    out_num_compressed: u32,
+    out_num_uncompressed: u32,
+
+    req_bit_flips: u32,
+    total_set_bits: u32,
+}
+
+impl CompressionStats {
+    fn new() -> Self {
+        CompressionStats::default()
+    }
+
+    fn add_input_stats(&mut self, total: u32, compressed: u32, uncompressed: u32) {
+        self.in_num_elements += total;
+        self.in_num_compressed += compressed;
+        self.in_num_uncompressed += uncompressed;
+    }
+
+    fn add_output_stats(&mut self, total: u32, compressed: u32, uncompressed: u32) {
+        self.out_num_elements += total;
+        self.out_num_compressed += compressed;
+        self.out_num_uncompressed += uncompressed;
+    }
+
+    fn add_bit_flips(&mut self, flips: u32) {
+        self.req_bit_flips += flips;
+    }
+
+    fn add_set_bits(&mut self, bits: u32) {
+        self.total_set_bits += bits;
+    }
+
+    fn print(&self) {
+        println!("Input Statistics:");
+        println!("Total blocks: {}\nCompressed blocks: {}\nUncompressed blocks: {}",
+            self.in_num_elements,
+            self.in_num_compressed,
+            self.in_num_uncompressed);
+        println!("\nOutput Statistics:");
+        println!("Total blocks: {}\nCompressed blocks: {}\nUncompressed blocks: {}",
+            self.out_num_elements,
+            self.out_num_compressed,
+            self.out_num_uncompressed);
+        println!("\nData Loss:");
+        println!("{} bits flipped of {} total set bits", self.req_bit_flips, self.total_set_bits);
+        if self.in_num_elements > 0 && self.total_set_bits > 0 {
+            let percent_compression = (1.0 - (self.out_num_elements as f64 / self.in_num_elements as f64)) * 100.0;
+            let data_lost = (self.req_bit_flips as f64 / self.total_set_bits as f64) * 100.0;
+            println!("\nSummary Statistics:");
+            println!("{:.2}% reduction in size", percent_compression);
+            println!("{:.2}% of data lost", data_lost);
+        }
+    }
+}
 
 /*
  * Method computes the number of uncompressed blocks, organized by the number of set bits x the number of
@@ -49,9 +110,8 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
             let mut num_neighbors = 0;
             // determine if subset_vector[i] is an uncompressed element
             match current_element {
-                Run::Ones(_count) => {continue;},
-                Run::Zeros(_count) => {continue;},
                 Run::Uncompressed(bits) => {
+                    // determine number of neighboring compressed zero blocks
                     let count_ones = bits.count_ones() as usize;
                     if i > 0 {
                         match subset_vector[i - 1] {
@@ -66,8 +126,10 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
                             _ => {},
                         }
                     }
+                    // update result
                     freq_matrix[count_ones - 1][num_neighbors] += 1;
                 },
+                _ => {},
             };
         }
     }
@@ -76,35 +138,8 @@ fn comp_freq_uncompressed(subset_rles_path: &Path) {
     for row in &freq_matrix {
         println!("{:?}", row);
     }
-}
 
-/*
- * Method performs basic error testing by ensuring that the same number of bits are being represented
- * between the input and compressed vector.
- *
- * Returns true if the number of bits across both vectors is equal, otherwise false.
- */
-fn verify_bits(input: Vec<u16>, compressed: Vec<u16>) -> bool {
-    let mut input_bits: u32 = 0;
-    let mut result_bits: u32 = 0;
-
-    for block in input {
-        if block & (1 << 15) > 0 {
-            input_bits += 15;
-        } else {
-            input_bits += (block & 0b0011_1111_1111_1111) as u32;
-        }
-    }
-
-    for block in compressed {
-        if block & (1 << 15) > 0 {
-            result_bits += 15;
-        } else {
-            result_bits += (block & 0b0011_1111_1111_1111) as u32;
-        }
-    }
-
-    input_bits == result_bits
+    println!("");
 }
 
 /*
@@ -116,156 +151,172 @@ fn verify_bits(input: Vec<u16>, compressed: Vec<u16>) -> bool {
  *      - There can be, at most, FLIP_TOLERANCE many set bits in the uncompressed block
  *      - At least one of the neighboring blocks (at position i - 1 or i + 1) must be a compressed block of zeros.
  *      - The resultant number of zeros across all combined blocks must be <= MAX_ENCODED
+ *          - Method does NOT currently handle the case where neighbor blocks can not hold the additional bits 
+ *            individually, but could hold the additional bits if they were divided between the two neighbors.
  *
  * Method outputs the following statistics:
  *      - Input size (total number of blocks, number of compressed, number of uncompressed)
  *      - Final size (total number of blocks, number of compressed, number of uncompressed)
- *      - Data loss (number of bits flipped vs. number of uncompressed bits vs. total number of bits)
+ *      - Data loss (number of bits flipped vs. total number of set bits)
  *      - Summary statistics (percent improved compression, percent data loss)
  */
  fn attempt_compression(subset_rles_path: &Path) {
     // load data from file and initialize variables to track statistics
     let subset_rles = load_data_from_file::<Vec<(u32, RunLengthEncoding)>>(subset_rles_path);
-    let mut input_num_blocks = 0;
-    let mut input_num_compressed = 0;
-    let mut input_num_uncompressed = 0;
-    
-    let mut final_num_blocks = 0;
-    let mut final_num_compressed = 0;
-    let mut final_num_uncompressed = 0;
-    
-    let mut req_bit_flips: u32 = 0;
-    let mut uncompressed_bits: u32 = 0;
-    let mut total_bits: u32 = 0;
-    let mut total_set_bits: u32 = 0;
 
-    // method checks if a neighboring value is compressed, whether it represents a run of 0s or 1s, and the count
-    fn decode_neighbor(value: u16) -> Option<(u16, bool)> {
-        if value & (1 << 15) == 0 {
-            let is_zero = value & (1 << 14) == 0;
-            let count = value & 0b0011_1111_1111_1111;
-            return Some((count, is_zero));
-        }
-        None
-    }
+    let mut stats = CompressionStats::new();
 
-    // iterate through each sample in the subset
-    for subset in &subset_rles {
-        let subset_vector = subset.1.get_vector();
+    // interate through each sample in the subset
+    for subset in subset_rles.iter() {
+        let subset_vector = subset.1.get_vector().into_iter().map(|run| {
+            Run::from_u16(*run)
+        }).collect_vec();
 
-        // update statistics for input file
-        input_num_blocks += subset_vector.len();
-        input_num_compressed += subset_vector.iter().filter(|&&value| value & (1 << 15) == 0).count();
-        input_num_uncompressed += subset_vector.iter().filter(|&&value| value & (1 << 15) > 0).count();
+        // update compression statistics for input vector
+        let num_elements = subset_vector.len() as u32;
+        let num_compressed = subset_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) == 0).count() as u32;
+        let num_uncompressed = subset_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) > 0).count() as u32;
+        stats.add_input_stats(num_elements, num_compressed, num_uncompressed);
 
-        let input_all_compressed_blocks = subset_vector.iter().filter(|&&value| value & (0b1000_0000_0000_0000) == 0);
-        let input_all_compressed_ones = input_all_compressed_blocks.filter(|&&value| value & (0b0100_0000_0000_0000) > 0);
-        for block in input_all_compressed_ones {
-            total_set_bits += (block & 0b0011_1111_1111_1111) as u32;
-        }
-
-        // initialize vector to hold result for this subset
         let mut result_vector = vec![];
+        let mut skip_next = false;
 
-        // iterate through each element in the subset vector
-        let mut i = 0;
-        while i < subset_vector.len() {
-            let current_element = subset_vector[i];
+        // iterate through each element in the subset_vector, attempting to compress it
+        for (i, current_element) in subset_vector.iter().enumerate() {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
+        
+            match current_element {
+                Run::Uncompressed(bits) => {
+                    // dealing with uncompressed block, determine number of set bits 
+                    let count_ones = bits.count_ones() as u16;
+                    stats.add_set_bits(count_ones as u32);
+                    if count_ones <= FLIP_TOLERANCE {
+                        // within the flip tolerance, determine if a flip would allow for merge(s)
+                        let max_encoded_value = (1 << 14) - 1;
+                        let mut can_merge_prev = false;
+                        let mut can_merge_next = false;
+                        let mut merged_count = 15;
 
-            // determine whether we are looking at an uncompressed block
-            let is_uncompressed = current_element & (1 << 15) > 0;
-            if is_uncompressed {
-                let current_value = current_element & 0b0111_1111_1111_1111;
-                let count_ones = current_value.count_ones() as u16;
-                uncompressed_bits += 15;
-                total_bits += 15;
-                total_set_bits += count_ones as u32;
-                
-                let mut can_merge_prev = false;
-                let mut can_merge_next = false;
-                let mut block_count = 15;
-
-                if i > 0 {
-                    // retrieve the previous element - stored in the result_vector as the final element
-                    let prev_value = result_vector[result_vector.len() - 1];
-                    if let Some((count, is_zero)) = decode_neighbor(prev_value) {
-                        if count_ones <= FLIP_TOLERANCE && is_zero && count + block_count <= MAX_ENCODED {
-                            can_merge_prev = true;
-                            block_count += count;
+                        // check previous neighbor for potential merge
+                        if i > 0 {
+                            can_merge_prev = match result_vector[result_vector.len() - 1] {
+                                Run::Zeros(count) => {
+                                    if merged_count + count <= max_encoded_value {
+                                        merged_count += count;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
+                                _ => {false},
+                            };
                         }
-                    }
-                }
 
-                if i < subset_vector.len() - 1 {
-                    // retrieve the next element - stored at i + 1 in subset_vector
-                    let next_value = subset_vector[i + 1];
-                    if let Some((count, is_zero)) = decode_neighbor(next_value) {
-                        if count_ones <= FLIP_TOLERANCE && is_zero && count + block_count <= MAX_ENCODED {
-                            can_merge_next = true;
-                            block_count += count;
+                        // check following neighbor for potential merge
+                        if i < subset_vector.len() - 1 {
+                            can_merge_next = match subset_vector[i + 1] {
+                                Run::Zeros(count) => {
+                                    if merged_count + count <= max_encoded_value {
+                                        merged_count += count;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
+                                _ => {false},
+                            };
                         }
-                    }
-                }
 
-                // attempt to merge
-                if can_merge_prev || can_merge_next {
-                    req_bit_flips += count_ones as u32;
-                    if can_merge_prev {
-                        // need to update the value already saved in result_vector
-                        let length = result_vector.len();
-                        result_vector[length - 1] = block_count;
+                        skip_next = can_merge_next;
+                        if can_merge_prev || can_merge_next {
+                            stats.add_bit_flips(count_ones as u32);
+                        }
 
-                        // if we are merging both previous and next - need to move forward one
-                        if can_merge_next {
-                            total_bits += (subset_vector[i + 1] & 0b0011_1111_1111_1111) as u32;
-                            i += 1;
+                        // perform merge
+                        if can_merge_prev {
+                            let result_length = result_vector.len();
+                            result_vector[result_length - 1] = Run::from_u16(merged_count);
+                        } else if can_merge_next {
+                            result_vector.push(Run::from_u16(merged_count));
+                        } else {
+                            let current_value = Run::to_u16(current_element);
+                            result_vector.push(Run::from_u16(current_value));
                         }
                     } else {
-                        // only merging with the next block - append to result vector and move forward one
-                        total_bits += (subset_vector[i + 1] & 0b0011_1111_1111_1111) as u32;
-                        result_vector.push(block_count);
-                        i += 1;
+                        // block has more than FLIP_TOLERANCE set bits, add it to result_vector
+                        let current_value = Run::to_u16(current_element);
+                        result_vector.push(Run::from_u16(current_value));
                     }
-                } else {
-                    // could not merge, add it to the result_vector
-                    result_vector.push(current_element);
+                },
+                Run::Ones(count) => {
+                    stats.add_set_bits(*count as u32);
+                    let current_value = Run::to_u16(current_element);
+                    result_vector.push(Run::from_u16(current_value));
                 }
-            } else {
-                // value is already compressed, add it to the result_vector
-                result_vector.push(current_element);
-                total_bits += (current_element & 0b0011_1111_1111_1111) as u32;
-            }
-
-            i += 1;
+                Run::Zeros(_) => {
+                    let current_value = Run::to_u16(current_element);
+                    result_vector.push(Run::from_u16(current_value));
+                },
+            };
         }
 
-        final_num_blocks += result_vector.len();
-        final_num_compressed += result_vector.iter().filter(|&&value| value & (1 << 15) == 0).count();
-        final_num_uncompressed += result_vector.iter().filter(|&&value| value & (1 << 15) > 0).count();
+        // update compression statistics for final vector
+        let num_elements = result_vector.len() as u32;
+        let num_compressed = result_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) == 0).count() as u32;
+        let num_uncompressed = result_vector.iter().filter(|&value| Run::to_u16(value) & (1 << 15) > 0).count() as u32;
+        stats.add_output_stats(num_elements, num_compressed, num_uncompressed);
 
-        // basic error checking
-        // subset_vector is a borrowed slice, needs to be converted to an owned vector
-        if !verify_bits(subset_vector.to_vec(), result_vector) {
-            println!("Error! - number of bits does not match");
+        if !verify_bits(subset_vector, result_vector) {
+            println!("Error! number of bits does not match");
         }
     }
 
     // output result
-    println!("\nTotal number of elements: {}", input_num_blocks);
-    println!("Count of compressed elements: {}", input_num_compressed);
-    println!("Count of uncompressed elements: {}", input_num_uncompressed);
+    stats.print();
+}
 
-    println!("\nFinal number of elements: {}", final_num_blocks);
-    println!("Final count of compressed elements: {}", final_num_compressed);
-    println!("Final count of uncompressed elements: {}", final_num_uncompressed);
-   
-    println!(
-        "Data loss: {} flips from {} uncompressed bits or {} total bits or {} set bits",
-        req_bit_flips,
-        uncompressed_bits,
-        total_bits,
-        total_set_bits,
-    );
+/*
+ * Method performs basic error testing by ensuring that the same number of bits are being represented
+ * between the input and compressed vector.
+ *
+ * Returns true if the number of bits across both vectors is equal, otherwise false.
+ */
+ fn verify_bits(input: Vec<Run>, compressed: Vec<Run>) -> bool {
+    let mut input_bits: u32 = 0;
+    let mut result_bits: u32 = 0;
+
+    for input_value in input {
+        match input_value {
+            Run::Zeros(count) => {
+                input_bits += count as u32;
+            },
+            Run::Ones(count) => {
+                input_bits += count as u32;
+            },
+            Run::Uncompressed(_) => {
+                input_bits += 15;
+            },
+        };
+    }
+
+    for compressed_value in compressed {
+        match compressed_value {
+            Run::Zeros(count) => {
+                result_bits += count as u32;
+            },
+            Run::Ones(count) => {
+                result_bits += count as u32;
+            },
+            Run::Uncompressed(_) => {
+                result_bits += 15;
+            },
+        };
+    }
+
+    input_bits == result_bits
 }
 
 fn main() {
