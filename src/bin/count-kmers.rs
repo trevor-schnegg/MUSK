@@ -9,22 +9,6 @@ use roaring::RoaringBitmap;
 use std::collections::HashMap;
 use std::path::Path;
 
-fn create_kmer_vec(files: String, kmer_length: usize) -> Vec<usize> {
-    let mut set = HashSet::new();
-    for file in files.split(",") {
-        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
-        while let Some(Ok(record)) = record_iter.next() {
-            if record.seq().len() < kmer_length {
-                continue;
-            }
-            for kmer in KmerIter::from(record.seq(), kmer_length) {
-                set.insert(kmer);
-            }
-        }
-    }
-    set.into_iter().collect_vec()
-}
-
 /// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
 #[derive(Parser)]
 #[clap(version, about)]
