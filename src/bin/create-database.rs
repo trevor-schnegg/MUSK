@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
 use log::info;
-use musk::io::load_string2taxid;
+use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
@@ -42,6 +42,10 @@ struct Args {
     #[arg()]
     /// The ordering of the sequences for the full matrix
     ordering_file: String,
+
+    #[arg()]
+    /// The output location of the final database
+    output_file: String,
 }
 
 fn main() {
@@ -50,6 +54,7 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let ordering_file_path = Path::new(&args.ordering_file);
+    let output_path = Path::new(&args.output_file);
 
     let mut ordering = load_string2taxid(ordering_file_path);
     if let (Some(old_prefix), Some(new_prefix)) =
@@ -108,6 +113,12 @@ fn main() {
         "{}\t{}\t{}\t{}",
         args.log_blocks, args.block_index, compressed_database_runs, naive_database_runs
     );
+
+    dump_data_to_file(
+        bincode::serialize(&compressed_database).unwrap(),
+        output_path,
+    )
+    .unwrap();
 
     info!("done!");
 }
