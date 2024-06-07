@@ -41,7 +41,7 @@ impl Database<u16> {
         let accession_index = self.accessions.len();
         self.accessions.push(record.id().to_string());
 
-        let all_kmers = KmerIter::from(record.seq(), self.kmer_len);
+        let all_kmers = KmerIter::from(record.seq(), self.kmer_len, false);
         let kmer_set = HashSet::from_iter(all_kmers);
         let insert_count = kmer_set.len();
 
@@ -52,7 +52,7 @@ impl Database<u16> {
     }
 
     pub fn classify_read(&self, read: Record, num_queries: usize) -> Option<(BigExpFloat, &str)> {
-        let kmers = KmerIter::from(read.seq(), self.kmer_len)
+        let kmers = KmerIter::from(read.seq(), self.kmer_len, false)
             .take(num_queries)
             .collect::<Vec<usize>>();
         let num_queries = kmers.len();

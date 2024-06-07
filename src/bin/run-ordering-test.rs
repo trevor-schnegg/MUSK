@@ -6,7 +6,7 @@ use musk::{
     io::{load_data_from_file, load_string2taxid},
     kmer_iter::KmerIter,
     rle::{BuildRunLengthEncoding, RunLengthEncoding},
-    utility::{find_ordering, get_fasta_iterator_of_file, get_range, XOR_NUMBER},
+    utility::{get_fasta_iterator_of_file, get_range, greedy_ordering, XOR_NUMBER},
 };
 use rand::{
     distributions::{Distribution, Uniform},
@@ -31,7 +31,7 @@ fn create_bitmaps(
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, false) {
                 let kmer = kmer ^ XOR_NUMBER;
                 for (index, block) in blocks.iter().enumerate() {
                     if block.1 <= kmer && kmer < block.2 {
@@ -203,7 +203,7 @@ fn main() {
             block.0
         );
 
-        let block_ordering = find_ordering(&all_distances, 0)
+        let block_ordering = greedy_ordering(&all_distances, 0)
             .into_iter()
             .map(|x| (all_distances[x].1.clone(), all_distances[x].2))
             .collect::<Vec<(String, u32)>>();

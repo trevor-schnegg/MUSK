@@ -24,3 +24,4 @@ pq-tree = "*"
 itertools = "*"
 rayon = "*"
 indicatif = {version = "*", features = ["rayon"]} 
+concorde_rs = "*"

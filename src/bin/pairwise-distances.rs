@@ -8,19 +8,18 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
 
-/// Creates a file to tax id mapping where files with the same tax id are grouped
-/// together if their k-mer spectra are similar enough.
+/// Computes a pairwise distance matrix from the input sequences (or sequence groups)
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, action)]
+    /// Flag that specifies whether or not to use canonical kmers
+    canonical: bool,
+
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
-
-    #[arg(short, long, default_value_t = 12)]
-    /// Length of k-mer to use in the database
-    thread_number: usize,
 
     #[arg(short, long, default_value_t = 0)]
     /// 2^{log_blocks} partitions
@@ -35,7 +34,7 @@ struct Args {
     old_directory_prefix: Option<String>,
 
     #[arg(short, long)]
-    /// The old directory prefix of the fasta files
+    /// The new directory prefix of the fasta files
     new_directory_prefix: Option<String>,
 
     #[arg()]
@@ -74,7 +73,14 @@ fn main() {
         .progress()
         .map(|(files, taxid)| {
             (
-                create_bitmap(files.clone(), args.kmer_length, lowest_kmer, highest_kmer),
+                create_bitmap(
+                    &*files,
+                    args.kmer_length,
+                    lowest_kmer,
+                    highest_kmer,
+                    false,
+                    args.canonical,
+                ),
                 files,
                 taxid,
             )
@@ -86,18 +92,16 @@ fn main() {
         .progress()
         .enumerate()
         .map(|(index_1, (bitmap_1, files_1, taxid_1))| {
-            let inner_distances = bitmaps
+            let inner_distances = bitmaps[..=index_1]
                 .par_iter()
                 .enumerate()
-                .filter_map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
-                    if index_2 <= index_1 {
-                        None
+                .map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
+                    if index_1 == index_2 {
+                        0
                     } else {
                         let intersection_size = bitmap_1.intersection_len(bitmap_2);
                         // |A| + |B| - (2 * |A & B|)
-                        let distance =
-                            (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32;
-                        Some(distance)
+                        (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32
                     }
                 })
                 .collect::<Vec<u32>>();

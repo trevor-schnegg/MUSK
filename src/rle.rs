@@ -1,3 +1,6 @@
+use std::{slice::Iter, vec::IntoIter};
+
+use bit_iter::BitIter;
 use itertools::Itertools;
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -208,4 +211,81 @@ fn decompress_buffer(buffer: &Vec<Run>) -> u16 {
         }
     }
     decompressed
+}
+
+pub struct RunLengthEncodingIter<'a> {
+    curr_i: usize,
+    runs_iter: Iter<'a, u16>,
+    curr_run_iter: IntoIter<usize>,
+}
+
+impl<'a> RunLengthEncodingIter<'a> {
+    pub fn from_runs_vector(vec: &'a Vec<u16>) -> Self {
+        let mut curr_i = 0_usize;
+        let mut runs_iter = vec.into_iter();
+        while let Some(run) = runs_iter.next() {
+            match Run::from_u16(*run) {
+                Run::Zeros(count) => {
+                    curr_i += count as usize;
+                }
+                Run::Ones(count) => {
+                    return RunLengthEncodingIter {
+                        curr_i: curr_i + count as usize,
+                        runs_iter,
+                        curr_run_iter: (curr_i..curr_i + count as usize).collect_vec().into_iter(),
+                    }
+                }
+                Run::Uncompressed(bits) => {
+                    return RunLengthEncodingIter {
+                        curr_i: curr_i + 15,
+                        runs_iter,
+                        curr_run_iter: BitIter::from(bits)
+                            .map(|x| x + curr_i)
+                            .collect_vec()
+                            .into_iter(),
+                    }
+                }
+            }
+        }
+        RunLengthEncodingIter {
+            curr_i,
+            runs_iter,
+            curr_run_iter: (0_usize..0_usize).collect_vec().into_iter(),
+        }
+    }
+}
+
+impl<'a> Iterator for RunLengthEncodingIter<'a> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.curr_run_iter.next() {
+            Some(n) => Some(n),
+            None => {
+                while let Some(run) = self.runs_iter.next() {
+                    match Run::from_u16(*run) {
+                        Run::Zeros(count) => {
+                            self.curr_i += count as usize;
+                        }
+                        Run::Ones(count) => {
+                            self.curr_run_iter = (self.curr_i..self.curr_i + count as usize)
+                                .collect_vec()
+                                .into_iter();
+                            self.curr_i += count as usize;
+                            return self.curr_run_iter.next();
+                        }
+                        Run::Uncompressed(bits) => {
+                            self.curr_run_iter = BitIter::from(bits)
+                                .map(|x| x + self.curr_i)
+                                .collect_vec()
+                                .into_iter();
+                            self.curr_i += 15;
+                            return self.curr_run_iter.next();
+                        }
+                    }
+                }
+                None
+            }
+        }
+    }
 }

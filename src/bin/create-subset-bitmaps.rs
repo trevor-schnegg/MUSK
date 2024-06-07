@@ -3,7 +3,7 @@ use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use log::info;
 use musk::{
-    io::{dump_data_to_file, load_data_from_file},
+    io::{dump_data_to_file, load_string2taxid},
     kmer_iter::KmerIter,
     utility::get_fasta_iterator_of_file,
 };
@@ -23,7 +23,7 @@ fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> Roar
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length).map(|kmer| kmer as u32) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, false).map(|kmer| kmer as u32) {
                 if subset.contains(&kmer) {
                     bitset.insert(kmer);
                 }
@@ -67,9 +67,9 @@ fn main() {
     let ordering_path = Path::new(&args.ordering);
     let output_path = Path::new(&args.output_file);
     let total_kmers = 4_usize.pow(args.kmer_length as u32);
-    let subset_size = 4_usize.pow(8);
+    let subset_size = 4_usize.pow(9);
 
-    let ordering = load_data_from_file::<Vec<(String, u32)>>(ordering_path)
+    let ordering = load_string2taxid(ordering_path)
         .into_iter()
         .map(|(files, taxid)| {
             (

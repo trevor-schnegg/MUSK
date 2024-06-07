@@ -1,13 +1,12 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
-use itertools::Itertools;
 use log::info;
 use musk::io::load_string2taxid;
-use musk::kmer_iter::KmerIter;
-use musk::utility::get_fasta_iterator_of_file;
+use musk::utility::{create_bitmap, get_range};
 use rayon::iter::IntoParallelIterator;
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use roaring::RoaringBitmap;
+use std::collections::HashMap;
 use std::path::Path;
 
 fn create_kmer_vec(files: String, kmer_length: usize) -> Vec<usize> {
@@ -51,34 +50,49 @@ fn main() {
 
     info!("getting kmer counts...");
 
-    let kmer_vecs = load_string2taxid(files2taxid)
+    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, 12, 667);
+
+    let bitmaps = load_string2taxid(files2taxid)
         .into_par_iter()
         .progress()
-        .map(|(files, _taxid)| create_kmer_vec(files, args.kmer_length))
-        .collect::<Vec<Vec<usize>>>();
+        .map(|(files, _taxid)| {
+            create_bitmap(
+                &*files,
+                args.kmer_length,
+                lowest_kmer,
+                highest_kmer,
+                false,
+                false,
+            )
+        })
+        .collect::<Vec<RoaringBitmap>>();
 
-    for kmer_vec in kmer_vecs {
-        for kmer in kmer_vec {
-            kmer_counts[kmer] += 1;
+    for bitmap in bitmaps {
+        for kmer in bitmap {
+            kmer_counts[kmer as usize] += 1;
         }
     }
 
     info!("kmer counts collected! finding the number of times each count occurs...");
 
-    let mut num_ones_to_count = HashMap::new();
-
     for (kmer, number_of_ones) in kmer_counts.iter().enumerate() {
-        println!("{}\t{}", kmer, number_of_ones);
+        if lowest_kmer <= kmer && kmer < highest_kmer {
+            println!("{}\t{}", kmer, number_of_ones);
+        }
     }
 
     println!("========== END INDIVIDUAL KMERS ==========");
 
-    for num_ones in kmer_counts {
-        match num_ones_to_count.get_mut(&num_ones) {
-            None => {
-                num_ones_to_count.insert(num_ones, 1_usize);
+    let mut num_ones_to_count = HashMap::new();
+
+    for (kmer, num_ones) in kmer_counts.into_iter().enumerate() {
+        if lowest_kmer <= kmer && kmer < highest_kmer {
+            match num_ones_to_count.get_mut(&num_ones) {
+                None => {
+                    num_ones_to_count.insert(num_ones, 1_usize);
+                }
+                Some(count) => *count += 1,
             }
-            Some(count) => *count += 1,
         }
     }
 
