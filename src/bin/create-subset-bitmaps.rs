@@ -15,7 +15,7 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::{collections::HashSet, path::Path};
 
-fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> RoaringBitmap {
+fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize, canonical: bool) -> RoaringBitmap {
     let mut bitset = RoaringBitmap::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -23,7 +23,7 @@ fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> Roar
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length, false).map(|kmer| kmer as u32) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, canonical).map(|kmer| kmer as u32) {
                 if subset.contains(&kmer) {
                     bitset.insert(kmer);
                 }
@@ -38,6 +38,10 @@ fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize) -> Roar
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, action)]
+    /// Flag that specifies whether or not to use canonical kmers
+    canonical: bool,
+
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
@@ -92,7 +96,7 @@ fn main() {
         .into_par_iter()
         .progress()
         .map(|(files, taxid)| {
-            let bitmap = create_bitmap(&*files, &kmer_subset, args.kmer_length);
+            let bitmap = create_bitmap(&*files, &kmer_subset, args.kmer_length, args.canonical);
             (files, bitmap, taxid)
         })
         .collect::<Vec<(String, RoaringBitmap, u32)>>();
