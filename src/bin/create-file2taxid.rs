@@ -1,4 +1,5 @@
 use clap::Parser;
+use indicatif::ProgressIterator;
 use log::{debug, info};
 use musk::io::load_string2taxid;
 use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
@@ -43,11 +44,7 @@ fn main() {
         "taxonomy read! looping through sequences at {}",
         args.reference_location
     );
-    let mut fasta_files = get_fasta_files(reference_loc).into_iter().enumerate();
-    while let Some((i, file)) = fasta_files.next() {
-        if i % 2500 == 0 && i != 0 {
-            debug!("done with {} files", i);
-        }
+    for file in get_fasta_files(reference_loc).into_iter().progress() {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
         let first_record = record_iter.next().unwrap().unwrap();
         let mut taxid = accession2taxid[first_record.id()];

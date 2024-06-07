@@ -92,6 +92,7 @@ impl BuildRunLengthEncoding {
             let current_run = self.vector.last_mut().unwrap();
             if let Run::Ones(count) = Run::from_u16(*current_run) {
                 if count == MAX_RUN {
+                    // Push block with a run length of 1
                     self.vector.push(Run::Ones(1).to_u16());
                 } else {
                     *current_run += 1;
@@ -135,59 +136,69 @@ impl RunLengthEncoding {
         let mut runs_iterator = self.vector.iter().map(|x| Run::from_u16(*x));
         let mut compressed_vector = vec![];
         let mut buffer = vec![];
-        let mut current_buffer_size = 0_usize;
+        let mut num_bits_in_buffer = 0_usize;
+
         while let Some(run) = runs_iterator.next() {
-            let run_size = match run {
+            let run_bits = match run {
                 Run::Ones(count) => count,
                 Run::Zeros(count) => count,
-                Run::Uncompressed(_) => panic!("tried to compress an already compressed vector"),
+                Run::Uncompressed(_) => panic!("tried to call compress on a vector twice"),
             } as usize;
-            if current_buffer_size + run_size < 15 {
+
+            if num_bits_in_buffer + run_bits < 15 {
                 buffer.push(run);
-                current_buffer_size += run_size;
-            } else if current_buffer_size + run_size == 15 {
+                num_bits_in_buffer += run_bits;
+            } else if num_bits_in_buffer + run_bits == 15 {
                 // check if it should be uncompressed
-                if buffer.len() == 0 {
+                if num_bits_in_buffer == 0 {
                     compressed_vector.push(run);
                 } else {
                     buffer.push(run);
                     let decompressed = decompress_buffer(&mut buffer);
                     buffer.clear();
-                    current_buffer_size = 0;
+                    num_bits_in_buffer = 0;
                     compressed_vector.push(Run::Uncompressed(decompressed));
                 }
             } else {
                 // adding the next run would be strictly greater than 15
-                if buffer.len() == 0 {
+                if buffer.is_empty() {
                     compressed_vector.push(run);
                 } else {
                     // buffer.len() >= 1
-                    let fill_buffer_size = 15 - current_buffer_size as u16;
-                    let leftover_size = run_size as u16 - fill_buffer_size;
-                    let (run_to_push, leftover_run) = if let Run::Ones(_) = run {
+                    let fill_buffer_size = 15 - num_bits_in_buffer as u16;
+                    let leftover_size = run_bits as u16 - fill_buffer_size;
+
+                    let (run_to_add, leftover_run) = if let Run::Ones(_) = run {
                         (Run::Ones(fill_buffer_size), Run::Ones(leftover_size))
                     } else {
                         (Run::Zeros(fill_buffer_size), Run::Zeros(leftover_size))
                     };
-                    buffer.push(run_to_push);
+
+                    buffer.push(run_to_add);
                     let decompressed = decompress_buffer(&mut buffer);
-                    buffer.clear();
-                    current_buffer_size = 0;
+
                     compressed_vector.push(Run::Uncompressed(decompressed));
+
+                    buffer.clear();
+                    num_bits_in_buffer = 0;
+
                     if leftover_size < 15 {
                         buffer.push(leftover_run);
-                        current_buffer_size += leftover_size as usize;
+                        num_bits_in_buffer += leftover_size as usize;
                     } else {
                         compressed_vector.push(leftover_run);
                     }
                 }
             }
         }
+
+        // Handle the leftover bits in the buffer
         if buffer.len() <= 1 {
             compressed_vector.append(&mut buffer);
         } else {
             compressed_vector.push(Run::Uncompressed(decompress_buffer(&buffer)))
         }
+
         self.vector = compressed_vector
             .into_iter()
             .map(|x| x.to_u16())

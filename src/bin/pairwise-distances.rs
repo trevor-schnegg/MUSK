@@ -93,7 +93,7 @@ fn main() {
         .enumerate()
         .map(|(index_1, (bitmap_1, files_1, taxid_1))| {
             let inner_distances = bitmaps[..=index_1]
-                .par_iter()
+                .iter()
                 .enumerate()
                 .map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
                     if index_1 == index_2 {

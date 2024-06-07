@@ -90,12 +90,15 @@ fn main() {
 
     info!("roaring bitmaps computed, creating database...");
 
-    let mut database = vec![BuildRunLengthEncoding::new(); 4_usize.pow(args.kmer_length as u32)];
+    let mut database =
+        vec![BuildRunLengthEncoding::new(); (4 as usize).pow(args.kmer_length as u32)];
+
     for (index, (_files, bitmap)) in bitmaps.into_iter().progress().enumerate() {
         for kmer in bitmap {
             database[kmer as usize].push(index);
         }
     }
+
     let naive_database_runs = database
         .iter()
         .map(|build_rle| build_rle.get_vector().len())

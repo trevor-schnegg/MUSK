@@ -15,7 +15,12 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::{collections::HashSet, path::Path};
 
-fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize, canonical: bool) -> RoaringBitmap {
+fn create_bitmap(
+    files: &str,
+    subset: &HashSet<u32>,
+    kmer_length: usize,
+    canonical: bool,
+) -> RoaringBitmap {
     let mut bitset = RoaringBitmap::new();
     for file in files.split(",") {
         let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
@@ -23,7 +28,8 @@ fn create_bitmap(files: &str, subset: &HashSet<u32>, kmer_length: usize, canonic
             if record.seq().len() < kmer_length {
                 continue;
             }
-            for kmer in KmerIter::from(record.seq(), kmer_length, canonical).map(|kmer| kmer as u32) {
+            for kmer in KmerIter::from(record.seq(), kmer_length, canonical).map(|kmer| kmer as u32)
+            {
                 if subset.contains(&kmer) {
                     bitset.insert(kmer);
                 }

@@ -158,31 +158,37 @@ pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: us
     let mut connected_indices = HashSet::from([start_index]);
     let mut ordering = vec![start_index];
     let mut current_index = start_index;
+
     while ordering.len() < distances.len() {
         let mut next_index = 0_usize;
         let mut next_index_minimum = u32::MAX;
-        for (index, distance) in distances[current_index]
+
+        let mut distance_iter = distances[current_index]
             .0
             .iter()
             .chain(
-                distances[current_index + 1..]
+                distances[(current_index + 1)..]
                     .iter()
                     .map(|tuple| &tuple.0[current_index]),
             )
-            .enumerate()
-        {
+            .enumerate();
+
+        for (index, distance) in distance_iter {
             if *distance < next_index_minimum && !connected_indices.contains(&index) {
                 next_index = index;
                 next_index_minimum = *distance;
             }
         }
+
         ordering.push(next_index);
         connected_indices.insert(next_index);
         current_index = next_index;
+
         if ordering.len() % 2500 == 0 {
             debug!("found ordering for {} bitmaps", ordering.len());
         }
     }
+
     ordering
 }
 
