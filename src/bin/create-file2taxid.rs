@@ -1,11 +1,11 @@
 use clap::Parser;
 use indicatif::ProgressIterator;
-use log::{debug, info};
 use musk::io::load_string2taxid;
 use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
 use std::collections::HashMap;
 use std::path::Path;
 use taxonomy::{ncbi, TaxRank, Taxonomy};
+use tracing::info;
 
 /// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
 #[derive(Parser)]
@@ -26,7 +26,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

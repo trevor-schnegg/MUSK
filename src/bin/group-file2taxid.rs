@@ -1,12 +1,12 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
-use log::{debug, info};
 use musk::explore::connected_components;
 use musk::io::load_taxid2files;
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
+use tracing::{debug, info};
 
 /// Creates a matrix of (hamming) distances between bitmaps
 #[derive(Parser)]
@@ -27,7 +27,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

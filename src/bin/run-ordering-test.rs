@@ -1,7 +1,6 @@
 use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
-use log::info;
 use musk::{
     io::{load_data_from_file, load_string2taxid},
     kmer_iter::KmerIter,
@@ -18,6 +17,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
 };
+use tracing::info;
 
 fn create_bitmaps(
     files: &str,
@@ -76,7 +76,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

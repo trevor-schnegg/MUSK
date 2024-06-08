@@ -1,9 +1,8 @@
-use std::{slice::Iter, vec::IntoIter};
-
 use bit_iter::BitIter;
 use itertools::Itertools;
-use log::warn;
 use serde::{Deserialize, Serialize};
+use std::{slice::Iter, vec::IntoIter};
+use tracing::warn;
 
 #[derive(Debug)]
 pub enum Run {

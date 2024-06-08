@@ -1,6 +1,5 @@
 use clap::Parser;
 use indicatif::ProgressIterator;
-use log::info;
 use musk::{
     io::{dump_data_to_file, load_data_from_file},
     rle::{BuildRunLengthEncoding, RunLengthEncoding},
@@ -11,6 +10,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
 };
+use tracing::info;
 
 /// Creates a sample of k-mers from the matrix
 #[derive(Parser)]
@@ -27,7 +27,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

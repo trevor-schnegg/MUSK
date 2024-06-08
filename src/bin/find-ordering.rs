@@ -1,12 +1,12 @@
 use clap::Parser;
 use concorde_rs::{solver, LowerDistanceMatrix};
 use itertools::Itertools;
-use log::{debug, info};
 use musk::{
     io::load_data_from_file,
     utility::{average_hamming_distance, greedy_ordering},
 };
 use std::path::Path;
+use tracing::{debug, info};
 
 /// Creates an ordering of files based on distances between bitmaps
 #[derive(Parser)]
@@ -31,7 +31,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

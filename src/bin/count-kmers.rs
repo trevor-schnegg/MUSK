@@ -1,6 +1,5 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
-use log::info;
 use musk::io::load_string2taxid;
 use musk::utility::{create_bitmap, get_range};
 use rayon::iter::IntoParallelIterator;
@@ -8,6 +7,7 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::info;
 
 /// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
 #[derive(Parser)]
@@ -24,7 +24,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

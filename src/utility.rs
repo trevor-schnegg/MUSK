@@ -1,13 +1,13 @@
 use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
-use log::{debug, error, info, warn};
 use roaring::RoaringBitmap;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use tracing::{debug, error, info, warn};
 
 use crate::kmer_iter::KmerIter;
 
@@ -173,7 +173,7 @@ pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: us
             )
             .enumerate();
 
-        for (index, distance) in distance_iter {
+        while let Some((index, distance)) = distance_iter.next() {
             if *distance < next_index_minimum && !connected_indices.contains(&index) {
                 next_index = index;
                 next_index_minimum = *distance;

@@ -1,13 +1,13 @@
 use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
-use log::info;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
+use tracing::info;
 
 /// Creates a file to tax id mapping where files with the same tax id are grouped
 /// together if their k-mer spectra are similar enough.
@@ -49,7 +49,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();

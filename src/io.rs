@@ -1,4 +1,3 @@
-use log::{error, warn};
 use serde::Deserialize;
 use std::any::type_name;
 use std::collections::HashMap;
@@ -7,6 +6,7 @@ use std::io::Read;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::{io, vec};
+use tracing::{error, warn};
 
 pub fn split_string_to_taxid(line: String) -> (String, u32) {
     let split_line = line.split("\t").collect::<Vec<&str>>();

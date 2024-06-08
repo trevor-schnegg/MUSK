@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-env_logger = "*"
-log = "*"
+tracing = "*"
+tracing-subscriber = "*"
+
 bio = "*"
 statrs = "*"
 clap = { version = "*", features = ["derive"] }

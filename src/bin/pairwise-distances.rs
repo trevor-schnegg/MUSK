@@ -1,12 +1,12 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
-use log::info;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
+use tracing::info;
 
 /// Computes a pairwise distance matrix from the input sequences (or sequence groups)
 #[derive(Parser)]
@@ -47,7 +47,7 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     // Parse arguments from the command line
     let args = Args::parse();
