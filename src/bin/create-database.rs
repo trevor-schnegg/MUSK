@@ -3,6 +3,7 @@ use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
+use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -49,7 +50,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

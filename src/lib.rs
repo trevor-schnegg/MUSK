@@ -10,4 +10,5 @@ pub mod kmer_iter;
 pub mod rle;
 pub mod sequences;
 pub mod sorted_vector_utilities;
+pub mod tracing;
 pub mod utility;

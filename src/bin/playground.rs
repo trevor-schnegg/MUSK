@@ -1,10 +1,11 @@
 use musk::{
     kmer_iter::KmerIter,
-    rle::{Run, RunLengthEncodingIter},
+    rle::{Run, RunLengthEncodingIter}, tracing::start_musk_tracing_subscriber,
 };
 
 use itertools::Itertools;
 use musk::rle::BuildRunLengthEncoding;
+use tracing::{debug, error, info, warn};
 
 // const CLEAR_BITS: usize = 2_usize.pow((14 * 2) as u32) - 1;
 
@@ -23,6 +24,13 @@ use musk::rle::BuildRunLengthEncoding;
 // }
 
 fn main() {
+    start_musk_tracing_subscriber();
+
+    debug!("This should be captured only by stdout");
+    info!("This should be captured only by stdout");
+    warn!("This should be captured only by stderr");
+    error!("This should be captured only by stderr");
+
     let seq = "ATGCTGA".as_bytes();
     let mut seq_iter = KmerIter::from(seq, 3, false);
     while let Some(kmer) = seq_iter.next() {
@@ -60,7 +68,6 @@ fn main() {
     let ground_truth = dense_vector.into_iter();
     let test_rle = RunLengthEncodingIter::from_runs_vector(rle_1.get_vector());
     for (x, y) in ground_truth.zip(test_rle) {
-        println!("{}, {}", x, y);
         assert_eq!(x, y);
     }
 }

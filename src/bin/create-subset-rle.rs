@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::ProgressIterator;
 use musk::{
     io::{dump_data_to_file, load_data_from_file},
-    rle::{BuildRunLengthEncoding, RunLengthEncoding},
+    rle::{BuildRunLengthEncoding, RunLengthEncoding}, tracing::start_musk_tracing_subscriber,
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -27,7 +27,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

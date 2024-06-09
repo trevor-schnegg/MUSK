@@ -1,6 +1,7 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use musk::io::load_string2taxid;
+use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{create_bitmap, get_range};
 use rayon::iter::IntoParallelIterator;
 use rayon::prelude::*;
@@ -24,7 +25,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

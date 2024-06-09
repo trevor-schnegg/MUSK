@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 tracing = "*"
-tracing-subscriber = "*"
+tracing-subscriber = { version = "*", features = ["std", "env-filter"] }
 
 bio = "*"
 statrs = "*"

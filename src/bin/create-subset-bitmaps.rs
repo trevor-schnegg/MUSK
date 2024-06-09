@@ -2,9 +2,7 @@ use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use musk::{
-    io::{dump_data_to_file, load_string2taxid},
-    kmer_iter::KmerIter,
-    utility::get_fasta_iterator_of_file,
+    io::{dump_data_to_file, load_string2taxid}, kmer_iter::KmerIter, tracing::start_musk_tracing_subscriber, utility::get_fasta_iterator_of_file
 };
 use rand::{
     distributions::{Distribution, Uniform},
@@ -70,7 +68,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

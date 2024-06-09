@@ -2,7 +2,7 @@ use clap::Parser;
 use itertools::Itertools;
 use musk::{
     io::load_data_from_file,
-    rle::{Run, RunLengthEncoding},
+    rle::{Run, RunLengthEncoding}, tracing::start_musk_tracing_subscriber,
 };
 use std::path::Path;
 
@@ -17,7 +17,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

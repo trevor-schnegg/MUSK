@@ -2,10 +2,7 @@ use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
 use musk::{
-    io::{load_data_from_file, load_string2taxid},
-    kmer_iter::KmerIter,
-    rle::{BuildRunLengthEncoding, RunLengthEncoding},
-    utility::{get_fasta_iterator_of_file, get_range, greedy_ordering, XOR_NUMBER},
+    io::{load_data_from_file, load_string2taxid}, kmer_iter::KmerIter, rle::{BuildRunLengthEncoding, RunLengthEncoding}, tracing::start_musk_tracing_subscriber, utility::{get_fasta_iterator_of_file, get_range, greedy_ordering, XOR_NUMBER}
 };
 use rand::{
     distributions::{Distribution, Uniform},
@@ -76,7 +73,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

@@ -1,6 +1,7 @@
 use clap::Parser;
 use indicatif::ProgressIterator;
 use musk::io::load_string2taxid;
+use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
 use std::collections::HashMap;
 use std::path::Path;
@@ -26,7 +27,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();

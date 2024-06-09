@@ -2,8 +2,7 @@ use clap::Parser;
 use concorde_rs::{solver, LowerDistanceMatrix};
 use itertools::Itertools;
 use musk::{
-    io::load_data_from_file,
-    utility::{average_hamming_distance, greedy_ordering},
+    io::load_data_from_file, tracing::start_musk_tracing_subscriber, utility::{average_hamming_distance, greedy_ordering}
 };
 use std::path::Path;
 use tracing::{debug, info};
@@ -31,7 +30,7 @@ struct Args {
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();
