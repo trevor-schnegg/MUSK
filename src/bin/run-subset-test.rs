@@ -26,12 +26,12 @@ fn main() {
 
     let subset_rles = load_data_from_file::<Vec<(u32, RunLengthEncoding)>>(subset_rles_path);
 
-    println!("{:?}", subset_rles[0].1.get_vector());
+    println!("{:?}", subset_rles[0].1.get_raw_runs());
     println!(
         "{:?}",
         subset_rles[0]
             .1
-            .get_vector()
+            .get_raw_runs()
             .into_iter()
             .map(|x| Run::from_u16(*x))
             .collect_vec()

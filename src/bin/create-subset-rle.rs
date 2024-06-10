@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::ProgressIterator;
 use musk::{
     io::{dump_data_to_file, load_data_from_file},
-    rle::{BuildRunLengthEncoding, RunLengthEncoding},
+    rle::{NaiveRunLengthEncoding, RunLengthEncoding},
     tracing::start_musk_tracing_subscriber,
 };
 use rayon::prelude::*;
@@ -41,10 +41,10 @@ fn main() {
     )>(subset_bitmaps_path);
 
     info!("creating rle...");
-    let mut rle_map: HashMap<u32, BuildRunLengthEncoding> = HashMap::from_iter(
+    let mut rle_map: HashMap<u32, NaiveRunLengthEncoding> = HashMap::from_iter(
         subset_kmers
             .iter()
-            .map(|kmer| (*kmer, BuildRunLengthEncoding::new())),
+            .map(|kmer| (*kmer, NaiveRunLengthEncoding::new())),
     );
     for (index, (_files, bitmap, _taxid)) in subset_bitmaps.iter().progress().enumerate() {
         for kmer in bitmap {

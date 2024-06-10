@@ -5,7 +5,7 @@ use musk::{
 };
 
 use itertools::Itertools;
-use musk::rle::BuildRunLengthEncoding;
+use musk::rle::NaiveRunLengthEncoding;
 use tracing::{debug, error, info, warn};
 
 // const CLEAR_BITS: usize = 2_usize.pow((14 * 2) as u32) - 1;
@@ -32,6 +32,9 @@ fn main() {
     warn!("This should be captured only by stderr");
     error!("This should be captured only by stderr");
 
+    let underflow = usize::MAX.overflowing_add(1);
+    println!("{:?}", underflow);
+
     let seq = "ATGCTGA".as_bytes();
     let mut seq_iter = KmerIter::from(seq, 3, false);
     while let Some(kmer) = seq_iter.next() {
@@ -51,7 +54,7 @@ fn main() {
         dense_vector.push(n);
     }
 
-    let mut build_rle_1 = BuildRunLengthEncoding::new();
+    let mut build_rle_1 = NaiveRunLengthEncoding::new();
     for int in &dense_vector {
         build_rle_1.push(*int);
     }
@@ -60,14 +63,14 @@ fn main() {
     println!(
         "{:?}",
         rle_1
-            .get_vector()
+            .get_raw_runs()
             .into_iter()
             .map(|x| Run::from_u16(*x))
             .collect_vec()
     );
 
     let ground_truth = dense_vector.into_iter();
-    let test_rle = RunLengthEncodingIter::from_runs_vector(rle_1.get_vector());
+    let test_rle = RunLengthEncodingIter::from_runs_vector(rle_1.get_raw_runs());
     for (x, y) in ground_truth.zip(test_rle) {
         assert_eq!(x, y);
     }

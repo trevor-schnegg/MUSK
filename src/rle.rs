@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::{slice::Iter, vec::IntoIter};
 use tracing::warn;
 
+const MAX_UNCOMPRESSED_BITS: usize = 15;
+
 #[derive(Debug)]
 pub enum Run {
     Zeros(u16),
@@ -41,176 +43,200 @@ impl Run {
 }
 
 #[derive(Clone)]
-pub struct BuildRunLengthEncoding {
-    highest: usize,
-    vector: Vec<u16>,
+pub struct NaiveRunLengthEncoding {
+    highest_index: usize,
+    runs: Vec<u16>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct RunLengthEncoding {
-    vector: Vec<u16>,
+    runs: Vec<u16>,
 }
 
-impl BuildRunLengthEncoding {
+impl NaiveRunLengthEncoding {
     pub fn new() -> Self {
-        BuildRunLengthEncoding {
-            highest: 0,
-            vector: vec![],
+        NaiveRunLengthEncoding {
+            highest_index: usize::MAX,
+            runs: vec![],
         }
     }
 
-    pub fn get_vector(&self) -> &Vec<u16> {
-        &self.vector
+    pub fn get_raw_runs(&self) -> &Vec<u16> {
+        &self.runs
     }
 
-    pub fn push(&mut self, value: usize) -> () {
-        if self.vector.is_empty() {
-            if value == 0 {
-                self.vector.push(Run::Ones(1).to_u16());
-            } else {
-                // need to add zeros until we reach the correct value
-                let mut zeros_needed = value;
-                while zeros_needed > 0 {
-                    if zeros_needed <= MAX_RUN as usize {
-                        self.vector.push(Run::Zeros(zeros_needed as u16).to_u16());
-                        zeros_needed = 0;
-                    } else {
-                        self.vector.push(Run::Zeros(MAX_RUN).to_u16());
-                        zeros_needed -= MAX_RUN as usize;
-                    }
-                }
-                self.vector.push(Run::Ones(1).to_u16());
-                self.highest = value;
-            }
-        } else if value <= self.highest {
+    pub fn push(&mut self, index: usize) -> () {
+        // This is the smallest value I am allowed to insert
+        let next_sequential_index = self.highest_index.overflowing_add(1).0;
+
+        if index < next_sequential_index {
             warn!(
                 "Tried to insert {} into an RLE with highest value {}, skipping...",
-                value, self.highest
+                index, self.highest_index
             );
-        } else if value == self.highest + 1 {
-            let current_run = self.vector.last_mut().unwrap();
-            if let Run::Ones(count) = Run::from_u16(*current_run) {
-                if count == MAX_RUN {
-                    // Push block with a run length of 1
-                    self.vector.push(Run::Ones(1).to_u16());
-                } else {
-                    *current_run += 1;
-                }
+            return;
+        } else if index == next_sequential_index {
+            // In this case, I should try to extend the last run of ones (if possible)
+            if self.runs.is_empty() {
+                // Handle the special case where this is index 0
+                self.runs.push(Run::Ones(1).to_u16());
             } else {
-                panic!("The last value was not a run of ones but it should have been");
+                // Otherwise, the last run should be a run of ones
+                let last_run_raw = self.runs.last_mut().unwrap();
+
+                let current_num_ones = match Run::from_u16(*last_run_raw) {
+                    Run::Ones(num) => num,
+                    _ => {
+                        panic!("The last value was not a run of ones but it should have been");
+                    }
+                };
+
+                if current_num_ones == MAX_RUN {
+                    // Cannot increment the run because it is at max capacity
+                    // Push a new block with a run length of 1
+                    self.runs.push(Run::Ones(1).to_u16());
+                } else {
+                    *last_run_raw += 1;
+                }
             }
-            self.highest += 1;
         } else {
-            // need to add zeros until we get reach the correct value
-            let mut zeros_needed = value - self.highest - 1;
+            // Need to pad with zeros until we reach the desired value
+            let mut zeros_needed = if self.runs.is_empty() {
+                index
+            } else {
+                index - self.highest_index - 1
+            };
+
             while zeros_needed > 0 {
                 if zeros_needed <= MAX_RUN as usize {
-                    self.vector.push(Run::Zeros(zeros_needed as u16).to_u16());
+                    self.runs.push(Run::Zeros(zeros_needed as u16).to_u16());
                     zeros_needed = 0;
                 } else {
-                    self.vector.push(Run::Zeros(MAX_RUN).to_u16());
+                    self.runs.push(Run::Zeros(MAX_RUN).to_u16());
                     zeros_needed -= MAX_RUN as usize;
                 }
             }
-            self.vector.push(Run::Ones(1).to_u16());
-            self.highest = value;
+
+            // After padding with zeros, insert the set bit
+            self.runs.push(Run::Ones(1).to_u16());
         }
+
+        // Finally, set the highest index as the index we just inserted
+        self.highest_index = index;
     }
 
     pub fn to_rle(self) -> RunLengthEncoding {
-        let mut rle = RunLengthEncoding {
-            vector: self.vector,
-        };
-        rle.compress();
-        rle
+        RunLengthEncoding::compress_from(self.runs)
     }
 }
 
 impl RunLengthEncoding {
-    pub fn get_vector(&self) -> &Vec<u16> {
-        &self.vector
+    pub fn get_raw_runs(&self) -> &Vec<u16> {
+        &self.runs
     }
 
-    fn compress(&mut self) -> () {
-        let mut runs_iterator = self.vector.iter().map(|x| Run::from_u16(*x));
-        let mut compressed_vector = vec![];
-        let mut buffer = vec![];
+    fn compress_from(runs: Vec<u16>) -> Self {
+        // The compressed vector that composes the new run length encoding
+        let mut compressed_runs = vec![];
+        // A buffer that represents a bit set of at most MAX_UNCOMPRESSED_BITS
+        let mut bits_buffer = vec![];
+        // A variable to store the current number of bits in the buffer
+        // This is NOT equal to the length of the buffer
         let mut num_bits_in_buffer = 0_usize;
 
-        while let Some(run) = runs_iterator.next() {
+        for run in runs.into_iter().map(|x| Run::from_u16(x)) {
+            // Get the number of bits in the current run
             let run_bits = match run {
                 Run::Ones(count) => count,
                 Run::Zeros(count) => count,
-                Run::Uncompressed(_) => panic!("tried to call compress on a vector twice"),
+                Run::Uncompressed(_) => panic!("tried to call compress on an rle twice"),
             } as usize;
 
-            if num_bits_in_buffer + run_bits < 15 {
-                buffer.push(run);
+            if num_bits_in_buffer + run_bits < MAX_UNCOMPRESSED_BITS {
+                // If the run can be stored in the buffer, simply push it to the buffer
+                bits_buffer.push(run);
                 num_bits_in_buffer += run_bits;
-            } else if num_bits_in_buffer + run_bits == 15 {
-                // check if it should be uncompressed
-                if num_bits_in_buffer == 0 {
-                    compressed_vector.push(run);
-                } else {
-                    buffer.push(run);
-                    let decompressed = decompress_buffer(&mut buffer);
-                    buffer.clear();
-                    num_bits_in_buffer = 0;
-                    compressed_vector.push(Run::Uncompressed(decompressed));
-                }
-            } else {
-                // adding the next run would be strictly greater than 15
-                if buffer.is_empty() {
-                    compressed_vector.push(run);
-                } else {
-                    // buffer.len() >= 1
-                    let fill_buffer_size = 15 - num_bits_in_buffer as u16;
-                    let leftover_size = run_bits as u16 - fill_buffer_size;
+            } else if num_bits_in_buffer + run_bits == MAX_UNCOMPRESSED_BITS {
+                // If this run is added the buffer will be exactly at capacity
 
-                    let (run_to_add, leftover_run) = if let Run::Ones(_) = run {
-                        (Run::Ones(fill_buffer_size), Run::Ones(leftover_size))
+                // If the buffer started as empty, there is no advantage to storing this run as uncompressed
+                // Therefore, this is done for code simplicity and nothing else
+                bits_buffer.push(run);
+                let decompressed_run = decompress_buffer(&mut bits_buffer);
+
+                assert!(bits_buffer.is_empty());
+                num_bits_in_buffer = 0;
+
+                compressed_runs.push(decompressed_run);
+            } else {
+                // Adding the next run would be strictly greater than MAX_UNCOMPRESSED_BITS
+                if bits_buffer.is_empty() {
+                    // If the buffer is empty, this run overhangs MAX_UNCOMPRESSED_BITS
+                    // Simply push it to the compressed vector
+                    compressed_runs.push(run);
+                } else {
+                    // The buffer is not empty AND adding the next run overhangs MAX_UNCOMPRESSED_BITS
+                    // Therefore, borrow some bits from the run we are trying to add to the buffer to fill it
+                    let num_bits_to_fill_buffer =
+                        (MAX_UNCOMPRESSED_BITS - num_bits_in_buffer) as u16;
+                    let leftover_num_bits = run_bits as u16 - num_bits_to_fill_buffer;
+
+                    // Split the run into one to fill the buffer and one leftover
+                    let (buffer_run_to_add, leftover_run) = if let Run::Ones(_) = run {
+                        (
+                            Run::Ones(num_bits_to_fill_buffer),
+                            Run::Ones(leftover_num_bits),
+                        )
                     } else {
-                        (Run::Zeros(fill_buffer_size), Run::Zeros(leftover_size))
+                        (
+                            Run::Zeros(num_bits_to_fill_buffer),
+                            Run::Zeros(leftover_num_bits),
+                        )
                     };
 
-                    buffer.push(run_to_add);
-                    let decompressed = decompress_buffer(&mut buffer);
+                    bits_buffer.push(buffer_run_to_add);
+                    let decompressed_run = decompress_buffer(&mut bits_buffer);
 
-                    compressed_vector.push(Run::Uncompressed(decompressed));
-
-                    buffer.clear();
+                    assert!(bits_buffer.is_empty());
                     num_bits_in_buffer = 0;
 
-                    if leftover_size < 15 {
-                        buffer.push(leftover_run);
-                        num_bits_in_buffer += leftover_size as usize;
+                    // Push the decompressed bits to the compressed vector
+                    compressed_runs.push(decompressed_run);
+
+                    // Handle the leftover bits
+                    if leftover_num_bits < MAX_UNCOMPRESSED_BITS as u16 {
+                        bits_buffer.push(leftover_run);
+                        num_bits_in_buffer += leftover_num_bits as usize;
                     } else {
-                        compressed_vector.push(leftover_run);
+                        compressed_runs.push(leftover_run);
                     }
                 }
             }
         }
 
-        // Handle the leftover bits in the buffer
-        if buffer.len() <= 1 {
-            compressed_vector.append(&mut buffer);
+        // After the last run is processed, handle the leftover bits in the buffer (if any)
+        if bits_buffer.len() <= 1 {
+            compressed_runs.append(&mut bits_buffer);
         } else {
-            compressed_vector.push(Run::Uncompressed(decompress_buffer(&buffer)))
+            compressed_runs.push(decompress_buffer(&mut bits_buffer))
         }
 
-        self.vector = compressed_vector
-            .into_iter()
-            .map(|x| x.to_u16())
-            .collect_vec();
+        RunLengthEncoding {
+            runs: compressed_runs
+                .into_iter()
+                .map(|run| run.to_u16())
+                .collect_vec(),
+        }
     }
 }
 
-fn decompress_buffer(buffer: &Vec<Run>) -> u16 {
+// Takes a buffer of exactly MAX_UNCOMPRESSED_BITS and converts it to a bit set
+fn decompress_buffer(buffer: &mut Vec<Run>) -> Run {
     let mut decompressed = 0;
     let mut current_index = 0;
-    for run in buffer {
+    for run in buffer.iter() {
         match *run {
-            Run::Uncompressed(_) => panic!("impossible case"),
+            Run::Uncompressed(_) => panic!("impossible case reached"),
             Run::Ones(count) => {
                 for i in current_index..current_index + count {
                     decompressed |= 1 << i;
@@ -220,7 +246,8 @@ fn decompress_buffer(buffer: &Vec<Run>) -> u16 {
             Run::Zeros(count) => current_index += count,
         }
     }
-    decompressed
+    buffer.clear();
+    Run::Uncompressed(decompressed)
 }
 
 pub struct RunLengthEncodingIter<'a> {

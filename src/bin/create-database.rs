@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use itertools::Itertools;
 use musk::io::{dump_data_to_file, load_string2taxid};
-use musk::rle::{BuildRunLengthEncoding, RunLengthEncoding};
+use musk::rle::{NaiveRunLengthEncoding, RunLengthEncoding};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
@@ -84,7 +84,7 @@ fn main() {
     info!("roaring bitmaps computed, creating database...");
 
     let mut database =
-        vec![BuildRunLengthEncoding::new(); (4 as usize).pow(args.kmer_length as u32)];
+        vec![NaiveRunLengthEncoding::new(); (4 as usize).pow(args.kmer_length as u32)];
 
     for (index, bitmap) in bitmaps.into_iter().progress().enumerate() {
         for kmer in bitmap {
@@ -94,7 +94,7 @@ fn main() {
 
     let naive_database_runs = database
         .iter()
-        .map(|build_rle| build_rle.get_vector().len())
+        .map(|build_rle| build_rle.get_raw_runs().len())
         .sum::<usize>();
     let compressed_database = database
         .into_par_iter()
@@ -102,7 +102,7 @@ fn main() {
         .collect::<Vec<RunLengthEncoding>>();
     let compressed_database_runs = compressed_database
         .iter()
-        .map(|rle| rle.get_vector().len())
+        .map(|rle| rle.get_raw_runs().len())
         .sum::<usize>();
 
     info!(
