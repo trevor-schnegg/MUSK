@@ -1,6 +1,7 @@
 use musk::{
     kmer_iter::KmerIter,
-    rle::{Run, RunLengthEncodingIter}, tracing::start_musk_tracing_subscriber,
+    rle::{Run, RunLengthEncodingIter},
+    tracing::start_musk_tracing_subscriber,
 };
 
 use itertools::Itertools;

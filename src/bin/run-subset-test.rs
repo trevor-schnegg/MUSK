@@ -2,7 +2,8 @@ use clap::Parser;
 use itertools::Itertools;
 use musk::{
     io::load_data_from_file,
-    rle::{Run, RunLengthEncoding}, tracing::start_musk_tracing_subscriber,
+    rle::{Run, RunLengthEncoding},
+    tracing::start_musk_tracing_subscriber,
 };
 use std::path::Path;
 

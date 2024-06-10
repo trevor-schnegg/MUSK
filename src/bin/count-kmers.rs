@@ -1,5 +1,6 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
+use itertools::Itertools;
 use musk::io::load_string2taxid;
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{create_bitmap, get_range};
@@ -22,14 +23,20 @@ struct Args {
     #[arg()]
     /// Location of the files2taxid file
     files2taxid: String,
+
+    #[arg()]
+    /// Directory with fasta files to create reference from
+    reference_directory: String,
 }
 
 fn main() {
+    // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
     start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();
     let files2taxid = Path::new(&args.files2taxid);
+    let reference_dir_path = Path::new(&args.reference_directory);
 
     let mut kmer_counts = vec![0_usize; 4_usize.pow(args.kmer_length as u32)];
 
@@ -41,8 +48,13 @@ fn main() {
         .into_par_iter()
         .progress()
         .map(|(files, _taxid)| {
+            let file_paths = files
+                .split("$")
+                .map(|file| reference_dir_path.join(file))
+                .collect_vec();
+
             create_bitmap(
-                &*files,
+                file_paths,
                 args.kmer_length,
                 lowest_kmer,
                 highest_kmer,

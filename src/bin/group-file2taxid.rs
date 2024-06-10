@@ -1,12 +1,15 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use musk::explore::connected_components;
-use musk::io::load_taxid2files;
+use musk::io::load_string2taxid;
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{create_bitmap, get_range};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
-use std::path::Path;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 /// Creates a matrix of (hamming) distances between bitmaps
@@ -22,41 +25,78 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
+    /// Directory to output the file2taxid file
+    output_directory: String,
+
     #[arg()]
     /// the file2taxid file
     file2taxid: String,
+
+    #[arg()]
+    /// Directory with fasta files to create reference from
+    reference_directory: String,
 }
 
+const MIN_SIMILARITY: f64 = 0.9;
+
 fn main() {
+    // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
     start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();
     let file2taxid_path = Path::new(&args.file2taxid);
+    let output_dir_path = Path::new(&args.output_directory);
+    let reference_dir_path = Path::new(&args.reference_directory);
+
+    let mut output_file = File::create(output_dir_path.join("musk.grouped.file2taxid"))
+        .expect("could not create output file");
 
     info!("loading file2taxid at {}", args.file2taxid);
 
-    let taxid2files = load_taxid2files(file2taxid_path);
+    // Create a taxid to files hashmap where each taxid has a list of files with that taxid
+    let mut taxid2files = HashMap::new();
+    for (file, taxid) in load_string2taxid(file2taxid_path) {
+        match taxid2files.get_mut(&taxid) {
+            None => {
+                taxid2files.insert(taxid, vec![file]);
+            }
+            Some(files_vec) => files_vec.push(file),
+        }
+    }
 
     info!("file2taxid loaded! exploring files with the same tax id");
 
     let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, 0, 0);
+
     for (taxid, files) in taxid2files {
+        // If there is only 1 file, no comparisons are needed
         if files.len() == 1 {
-            println!("{}\t{}", files[0], taxid);
+            output_file
+                .write(format!("{}\t{}\n", files[0], taxid).as_bytes())
+                .expect("could not write to output file");
             continue;
         }
+
         debug!(
             "creating sets for taxid '{}' with {} files...",
             taxid,
             files.len()
         );
-        let bitmaps = files
+
+        let file_paths = files
             .par_iter()
+            .map(|file| reference_dir_path.join(file))
+            .collect::<Vec<PathBuf>>();
+
+        // Create a bitmap for each file
+        let bitmaps = file_paths
+            .into_par_iter()
             .progress()
             .map(|file| {
                 create_bitmap(
-                    &*file,
+                    vec![file],
                     args.kmer_length,
                     lowest_kmer,
                     highest_kmer,
@@ -65,18 +105,25 @@ fn main() {
                 )
             })
             .collect::<Vec<RoaringBitmap>>();
+
         debug!("bitmaps created! performing comparisons...");
-        let connected_components = connected_components(bitmaps, 0.9);
+
+        let connected_components = connected_components(bitmaps, MIN_SIMILARITY);
+
         for component in connected_components {
             let mut files_string = String::new();
+
             for file_index in component {
                 if files_string.is_empty() {
                     files_string += &*files[file_index];
                 } else {
-                    files_string += &*(String::from(",") + &*files[file_index])
+                    files_string += &*(String::from("$") + &*files[file_index])
                 }
             }
-            println!("{}\t{}", files_string, taxid);
+
+            output_file
+                .write(format!("{}\t{}\n", files_string, taxid).as_bytes())
+                .expect("could not write to output file");
         }
     }
 }

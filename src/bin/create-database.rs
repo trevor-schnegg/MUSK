@@ -16,6 +16,10 @@ use tracing::info;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, default_value_t = 0)]
+    /// The index of the block to use
+    block_index: usize,
+
     #[arg(short, long, action)]
     /// Flag that specifies whether or not to use canonical kmers
     canonical: bool,
@@ -28,73 +32,61 @@ struct Args {
     /// 2^{log_blocks} partitions
     log_blocks: u32,
 
-    #[arg(short, long, default_value_t = 0)]
-    /// The index of the block to use
-    block_index: usize,
-
-    #[arg(short, long)]
-    /// The old directory prefix of the fasta files
-    old_directory_prefix: Option<String>,
-
-    #[arg(short, long)]
-    /// The new directory prefix of the fasta files
-    new_directory_prefix: Option<String>,
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
+    /// Directory to output the file2taxid file
+    output_directory: String,
 
     #[arg()]
-    /// The ordering of the sequences for the full matrix
+    /// The ordered file2taxid of the sequences
     ordering_file: String,
 
     #[arg()]
-    /// The output location of the final database
-    output_file: String,
+    /// Directory with fasta files to create reference from
+    reference_directory: String,
 }
 
 fn main() {
+    // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
     start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();
     let ordering_file_path = Path::new(&args.ordering_file);
-    let output_path = Path::new(&args.output_file);
+    let output_dir_path = Path::new(&args.output_directory);
+    let reference_dir_path = Path::new(&args.reference_directory);
 
-    let mut ordering = load_string2taxid(ordering_file_path);
-    if let (Some(old_prefix), Some(new_prefix)) =
-        (args.old_directory_prefix, args.new_directory_prefix)
-    {
-        ordering = ordering
-            .into_iter()
-            .map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid))
-            .collect_vec();
-    }
+    let ordering = load_string2taxid(ordering_file_path);
 
     info!("creating roaring bitmaps for each group...");
 
     let (lowest_kmer, highest_kmer) =
         get_range(args.kmer_length, args.log_blocks, args.block_index);
     let bitmaps = ordering
-        .into_par_iter()
+        .par_iter()
         .progress()
         .map(|(files, _taxid)| {
-            (
-                files.clone(),
-                create_bitmap(
-                    &*files,
-                    args.kmer_length,
-                    lowest_kmer,
-                    highest_kmer,
-                    false,
-                    args.canonical,
-                ),
+            let file_paths = files
+                .split("$")
+                .map(|file| reference_dir_path.join(file))
+                .collect_vec();
+
+            create_bitmap(
+                file_paths,
+                args.kmer_length,
+                lowest_kmer,
+                highest_kmer,
+                false,
+                args.canonical,
             )
         })
-        .collect::<Vec<(String, RoaringBitmap)>>();
+        .collect::<Vec<RoaringBitmap>>();
 
     info!("roaring bitmaps computed, creating database...");
 
     let mut database =
         vec![BuildRunLengthEncoding::new(); (4 as usize).pow(args.kmer_length as u32)];
 
-    for (index, (_files, bitmap)) in bitmaps.into_iter().progress().enumerate() {
+    for (index, bitmap) in bitmaps.into_iter().progress().enumerate() {
         for kmer in bitmap {
             database[kmer as usize].push(index);
         }
@@ -119,8 +111,8 @@ fn main() {
     );
 
     dump_data_to_file(
-        bincode::serialize(&compressed_database).unwrap(),
-        output_path,
+        bincode::serialize(&(compressed_database, ordering)).unwrap(),
+        output_dir_path,
     )
     .unwrap();
 

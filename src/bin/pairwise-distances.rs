@@ -14,6 +14,14 @@ use tracing::info;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
+    /// Directory to output the file2taxid file
+    output_directory: String,
+
+    #[arg(short, long, default_value_t = 0)]
+    /// The index of the block to use
+    block_index: usize,
+
     #[arg(short, long, action)]
     /// Flag that specifies whether or not to use canonical kmers
     canonical: bool,
@@ -26,77 +34,68 @@ struct Args {
     /// 2^{log_blocks} partitions
     log_blocks: u32,
 
-    #[arg(short, long, default_value_t = 0)]
-    /// The index of the block to use
-    block_index: usize,
-
-    #[arg(short, long)]
-    /// The old directory prefix of the fasta files
-    old_directory_prefix: Option<String>,
-
-    #[arg(short, long)]
-    /// The new directory prefix of the fasta files
-    new_directory_prefix: Option<String>,
-
-    #[arg()]
-    /// Location to output the serialzed distances
-    output_file: String,
-
     #[arg()]
     /// the file2taxid file
     file2taxid: String,
+
+    #[arg()]
+    /// Directory with fasta files to create reference from
+    reference_directory: String,
 }
 
 fn main() {
+    // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
     start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();
     let file2taxid_path = Path::new(&args.file2taxid);
-    let output_file_path = Path::new(&args.output_file);
+    let output_dir_path = Path::new(&args.output_directory);
+    let reference_dir_path = Path::new(&args.reference_directory);
 
     info!("loading files2taxid at {}", args.file2taxid);
-    let mut file2taxid = load_string2taxid(file2taxid_path);
-    if let (Some(old_prefix), Some(new_prefix)) =
-        (args.old_directory_prefix, args.new_directory_prefix)
-    {
-        file2taxid = file2taxid
-            .into_iter()
-            .map(|(files, taxid)| (files.replace(&*old_prefix, &*new_prefix), taxid))
-            .collect_vec();
-    }
-    info!("{} groups total", file2taxid.len());
-    info!("creating roaring bitmaps for each group...");
+
+    let file2taxid = load_string2taxid(file2taxid_path);
+
+    info!(
+        "{} groups total, creating roaring bitmaps for each group...",
+        file2taxid.len()
+    );
+
     let (lowest_kmer, highest_kmer) =
         get_range(args.kmer_length, args.log_blocks, args.block_index);
+
     let bitmaps = file2taxid
-        .into_par_iter()
+        .par_iter()
         .progress()
-        .map(|(files, taxid)| {
-            (
-                create_bitmap(
-                    &*files,
-                    args.kmer_length,
-                    lowest_kmer,
-                    highest_kmer,
-                    false,
-                    args.canonical,
-                ),
-                files,
-                taxid,
+        .map(|(files, _taxid)| {
+            let file_paths = files
+                .split("$")
+                .map(|file| reference_dir_path.join(file))
+                .collect_vec();
+
+            create_bitmap(
+                file_paths,
+                args.kmer_length,
+                lowest_kmer,
+                highest_kmer,
+                false,
+                args.canonical,
             )
         })
-        .collect::<Vec<(RoaringBitmap, String, u32)>>();
+        .collect::<Vec<RoaringBitmap>>();
+
     info!("roaring bitmaps computed, creating distance matrix...");
+
     let distances = bitmaps
         .par_iter()
         .progress()
         .enumerate()
-        .map(|(index_1, (bitmap_1, files_1, taxid_1))| {
-            let inner_distances = bitmaps[..=index_1]
+        .map(|(index_1, bitmap_1)| {
+            bitmaps[..=index_1]
                 .iter()
                 .enumerate()
-                .map(|(index_2, (bitmap_2, _files_2, _taxid_2))| {
+                .map(|(index_2, bitmap_2)| {
                     if index_1 == index_2 {
                         0
                     } else {
@@ -105,12 +104,17 @@ fn main() {
                         (bitmap_1.len() + bitmap_2.len() - (2 * intersection_size)) as u32
                     }
                 })
-                .collect::<Vec<u32>>();
-            (inner_distances, files_1.clone(), *taxid_1)
+                .collect::<Vec<u32>>()
         })
-        .collect::<Vec<(Vec<u32>, String, u32)>>();
+        .collect::<Vec<Vec<u32>>>();
+
     info!("distance matrix completed! outputting to file...");
 
-    dump_data_to_file(bincode::serialize(&distances).unwrap(), output_file_path).unwrap();
+    dump_data_to_file(
+        bincode::serialize(&(distances, file2taxid)).unwrap(),
+        &output_dir_path.join("musk.pairwise_distances"),
+    )
+    .unwrap();
+
     info!("done!");
 }

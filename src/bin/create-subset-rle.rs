@@ -2,7 +2,8 @@ use clap::Parser;
 use indicatif::ProgressIterator;
 use musk::{
     io::{dump_data_to_file, load_data_from_file},
-    rle::{BuildRunLengthEncoding, RunLengthEncoding}, tracing::start_musk_tracing_subscriber,
+    rle::{BuildRunLengthEncoding, RunLengthEncoding},
+    tracing::start_musk_tracing_subscriber,
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;

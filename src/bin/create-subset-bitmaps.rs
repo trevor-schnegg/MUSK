@@ -2,7 +2,10 @@ use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use musk::{
-    io::{dump_data_to_file, load_string2taxid}, kmer_iter::KmerIter, tracing::start_musk_tracing_subscriber, utility::get_fasta_iterator_of_file
+    io::{dump_data_to_file, load_string2taxid},
+    kmer_iter::KmerIter,
+    tracing::start_musk_tracing_subscriber,
+    utility::get_fasta_iterator_of_file,
 };
 use rand::{
     distributions::{Distribution, Uniform},
@@ -10,18 +13,21 @@ use rand::{
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 use tracing::info;
 
 fn create_bitmap(
-    files: &str,
+    files: Vec<PathBuf>,
     subset: &HashSet<u32>,
     kmer_length: usize,
     canonical: bool,
 ) -> RoaringBitmap {
     let mut bitset = RoaringBitmap::new();
-    for file in files.split(",") {
-        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
+    for file in files {
+        let mut record_iter = get_fasta_iterator_of_file(&file);
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;
@@ -51,60 +57,66 @@ struct Args {
     kmer_length: usize,
 
     #[arg()]
-    /// The old directory prefix of the fasta files
-    old_directory_prefix: String,
-
-    #[arg()]
-    /// The old directory prefix of the fasta files
-    new_directory_prefix: String,
-
-    #[arg()]
     /// the ordering file
     ordering: String,
 
     #[arg()]
     /// Location to output the serialzed bitmaps
     output_file: String,
+
+    #[arg()]
+    /// Directory with fasta files to create reference from
+    reference_location: String,
 }
 
+const SUBSET_SIZE: usize = 4_usize.pow(9);
+
 fn main() {
+    // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
     start_musk_tracing_subscriber();
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let ordering_path = Path::new(&args.ordering);
     let output_path = Path::new(&args.output_file);
-    let total_kmers = 4_usize.pow(args.kmer_length as u32);
-    let subset_size = 4_usize.pow(9);
+    let ordering_path = Path::new(&args.ordering);
+    let reference_path = Path::new(&args.reference_location);
 
-    let ordering = load_string2taxid(ordering_path)
-        .into_iter()
-        .map(|(files, taxid)| {
-            (
-                files.replace(&*args.old_directory_prefix, &*args.new_directory_prefix),
-                taxid,
-            )
-        })
-        .collect_vec();
+    let total_kmers = 4_usize.pow(args.kmer_length as u32);
+
+    info!("loading ordering at {:?}", ordering_path);
+
+    let ordering = load_string2taxid(ordering_path);
+
+    info!(
+        "ordering loaded! creating a random sample of k-mers of size {} out of {} total k-mers",
+        SUBSET_SIZE, total_kmers
+    );
 
     let mut kmer_subset = HashSet::new();
     let mut rng = thread_rng();
     let distribution = Uniform::new(0_u32, total_kmers as u32);
-    while kmer_subset.len() < subset_size {
+    while kmer_subset.len() < SUBSET_SIZE {
         let sample = distribution.sample(&mut rng);
         kmer_subset.insert(sample);
     }
 
-    info!("creating roaring bitmaps for each group...");
+    info!("sample created! creating roaring bitmaps for each group...");
+
     let outputs = ordering
-        .into_par_iter()
+        .par_iter()
         .progress()
-        .map(|(files, taxid)| {
-            let bitmap = create_bitmap(&*files, &kmer_subset, args.kmer_length, args.canonical);
-            (files, bitmap, taxid)
+        .map(|(files, _taxid)| {
+            let file_paths = files
+                .split("$")
+                .map(|file| reference_path.join(file))
+                .collect_vec();
+
+            create_bitmap(file_paths, &kmer_subset, args.kmer_length, args.canonical)
         })
-        .collect::<Vec<(String, RoaringBitmap, u32)>>();
+        .collect::<Vec<RoaringBitmap>>();
+
     info!("bitmaps created! outputting to file...");
+
     dump_data_to_file(
         bincode::serialize(&(kmer_subset, outputs)).unwrap(),
         output_path,

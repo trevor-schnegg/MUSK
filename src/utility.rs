@@ -2,44 +2,43 @@ use bio::io::fasta;
 use bio::io::fasta::Records;
 use bio::utils::TextSlice;
 use roaring::RoaringBitmap;
-use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::{collections::HashSet, path::PathBuf};
 use tracing::{debug, error, info, warn};
 
 use crate::kmer_iter::KmerIter;
 
 pub const XOR_NUMBER: usize = 188_888_881;
 
-pub fn get_fasta_files(reference_loc: &Path) -> Vec<String> {
-    let dir_content =
-        fs::read_dir(reference_loc).expect("could not read provided reference directory");
+pub fn get_fasta_files(reference_loc: &Path) -> Vec<PathBuf> {
+    let dir_content = fs::read_dir(reference_loc).expect("could not read reference directory");
     dir_content
         .filter_map(|dir_entry| match dir_entry {
             Ok(entry) => {
-                if entry.path().is_file() && entry.file_name().to_str().unwrap().ends_with(".fna") {
-                    Some(entry.path().to_str().unwrap().to_string())
+                let entry_file_name = entry.file_name().to_str().unwrap().to_string();
+                if entry.path().is_file() && (entry_file_name.ends_with(".fna") || entry_file_name.ends_with(".fasta")) {
+                    Some(entry.path())
                 } else {
                     warn!(
-                        "Found directory entry '{:?}' that did not end with '.fna'. Skipping...",
+                        "found reference directory entry '{:?}' that did not end with '.fna' or '.fasta'. skipping...",
                         entry
                     );
                     None
                 }
             }
             Err(e) => {
+                error!("{}", e);
                 warn!(
-                    "Error found while reading entry of reference directory {:?}",
+                    "previous error found while reading reference directory at {:?}. skipping...",
                     reference_loc
                 );
-                error!("{}", e);
-                warn!("Skipping the entry because of the above error");
                 None
             }
         })
-        .collect::<Vec<String>>()
+        .collect::<Vec<PathBuf>>()
 }
 
 pub fn convert_to_uppercase(sequence: TextSlice) -> String {
@@ -128,8 +127,9 @@ pub fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (us
     (lowest_kmer, highest_kmer)
 }
 
+// Creates a single bitmap containing k-mers from all files, if necessary
 pub fn create_bitmap(
-    files: &str,
+    files: Vec<PathBuf>,
     kmer_length: usize,
     lowest_kmer: usize,
     highest_kmer: usize,
@@ -137,8 +137,8 @@ pub fn create_bitmap(
     canonical: bool,
 ) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
-    for file in files.split(",") {
-        let mut record_iter = get_fasta_iterator_of_file(Path::new(&file));
+    for file in files {
+        let mut record_iter = get_fasta_iterator_of_file(&file);
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;
@@ -154,7 +154,7 @@ pub fn create_bitmap(
     bitmap
 }
 
-pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: usize) -> Vec<usize> {
+pub fn greedy_ordering(distances: &Vec<Vec<u32>>, start_index: usize) -> Vec<usize> {
     let mut connected_indices = HashSet::from([start_index]);
     let mut ordering = vec![start_index];
     let mut current_index = start_index;
@@ -164,12 +164,11 @@ pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: us
         let mut next_index_minimum = u32::MAX;
 
         let mut distance_iter = distances[current_index]
-            .0
             .iter()
             .chain(
                 distances[(current_index + 1)..]
                     .iter()
-                    .map(|tuple| &tuple.0[current_index]),
+                    .map(|row| &row[current_index]),
             )
             .enumerate();
 
@@ -192,17 +191,14 @@ pub fn greedy_ordering(distances: &Vec<(Vec<u32>, String, u32)>, start_index: us
     ordering
 }
 
-pub fn average_hamming_distance(
-    ordering: &Vec<usize>,
-    distances: &Vec<(Vec<u32>, String, u32)>,
-) -> (f64, u64) {
+pub fn average_hamming_distance(ordering: &Vec<usize>, distances: &Vec<Vec<u32>>) -> (f64, u64) {
     let sum = ordering
         .windows(2)
         .map(|x| {
             if x[0] < x[1] {
-                distances[x[1]].0[x[0]] as u64
+                distances[x[1]][x[0]] as u64
             } else {
-                distances[x[0]].0[x[1]] as u64
+                distances[x[0]][x[1]] as u64
             }
         })
         .sum();
