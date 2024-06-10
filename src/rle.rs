@@ -121,7 +121,7 @@ impl NaiveRunLengthEncoding {
             self.runs.push(Run::Ones(1).to_u16());
         }
 
-        // Finally, set the highest index as the index we just inserted
+        // Finally, before ended, set the highest index as the index we just inserted
         self.highest_index = index;
     }
 
@@ -278,7 +278,7 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
             Some(n) => {
                 // If the current run has a value, return it
                 Some(n)
-            }
+            },
             None => {
                 // Otherwise, look for a new run to iterate over
                 while let Some(run) = self.raw_runs_iter.next() {
