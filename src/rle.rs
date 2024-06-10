@@ -135,6 +135,10 @@ impl RunLengthEncoding {
         &self.runs
     }
 
+    pub fn iter(&self) -> RunLengthEncodingIter {
+        RunLengthEncodingIter::from_runs(&self.runs)
+    }
+
     fn compress_from(runs: Vec<u16>) -> Self {
         // The compressed vector that composes the new run length encoding
         let mut compressed_runs = vec![];
@@ -252,41 +256,15 @@ fn decompress_buffer(buffer: &mut Vec<Run>) -> Run {
 
 pub struct RunLengthEncodingIter<'a> {
     curr_i: usize,
-    runs_iter: Iter<'a, u16>,
+    raw_runs_iter: Iter<'a, u16>,
     curr_run_iter: IntoIter<usize>,
 }
 
 impl<'a> RunLengthEncodingIter<'a> {
-    pub fn from_runs_vector(vec: &'a Vec<u16>) -> Self {
-        let mut curr_i = 0_usize;
-        let mut runs_iter = vec.into_iter();
-        while let Some(run) = runs_iter.next() {
-            match Run::from_u16(*run) {
-                Run::Zeros(count) => {
-                    curr_i += count as usize;
-                }
-                Run::Ones(count) => {
-                    return RunLengthEncodingIter {
-                        curr_i: curr_i + count as usize,
-                        runs_iter,
-                        curr_run_iter: (curr_i..curr_i + count as usize).collect_vec().into_iter(),
-                    }
-                }
-                Run::Uncompressed(bits) => {
-                    return RunLengthEncodingIter {
-                        curr_i: curr_i + 15,
-                        runs_iter,
-                        curr_run_iter: BitIter::from(bits)
-                            .map(|x| x + curr_i)
-                            .collect_vec()
-                            .into_iter(),
-                    }
-                }
-            }
-        }
+    pub fn from_runs(runs: &'a Vec<u16>) -> Self {
         RunLengthEncodingIter {
-            curr_i,
-            runs_iter,
+            curr_i: 0,
+            raw_runs_iter: runs.iter(),
             curr_run_iter: (0_usize..0_usize).collect_vec().into_iter(),
         }
     }
@@ -297,14 +275,20 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.curr_run_iter.next() {
-            Some(n) => Some(n),
+            Some(n) => {
+                // If the current run has a value, return it
+                Some(n)
+            }
             None => {
-                while let Some(run) = self.runs_iter.next() {
+                // Otherwise, look for a new run to iterate over
+                while let Some(run) = self.raw_runs_iter.next() {
                     match Run::from_u16(*run) {
                         Run::Zeros(count) => {
+                            // If the run is zeros, add it to curr_i and look for the next run
                             self.curr_i += count as usize;
                         }
                         Run::Ones(count) => {
+                            // If the run is ones, create a new curr_run_iter and return the first value
                             self.curr_run_iter = (self.curr_i..self.curr_i + count as usize)
                                 .collect_vec()
                                 .into_iter();
@@ -312,15 +296,17 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
                             return self.curr_run_iter.next();
                         }
                         Run::Uncompressed(bits) => {
+                            // If the run is uncompressed, create new curr_run_iter over it and return the first value
                             self.curr_run_iter = BitIter::from(bits)
                                 .map(|x| x + self.curr_i)
                                 .collect_vec()
                                 .into_iter();
-                            self.curr_i += 15;
+                            self.curr_i += MAX_UNCOMPRESSED_BITS;
                             return self.curr_run_iter.next();
                         }
                     }
                 }
+                // If a new curr_run_iter cannot be found, return None
                 None
             }
         }

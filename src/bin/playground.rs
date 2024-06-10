@@ -1,7 +1,5 @@
 use musk::{
-    kmer_iter::KmerIter,
-    rle::{Run, RunLengthEncodingIter},
-    tracing::start_musk_tracing_subscriber,
+    kmer_iter::KmerIter, rle::Run, tracing::start_musk_tracing_subscriber
 };
 
 use itertools::Itertools;
@@ -48,14 +46,14 @@ fn main() {
 
     let _maximum = (1_usize << 14) - 1;
 
-    let mut dense_vector = (5_usize..50_usize).into_iter().collect_vec();
+    let mut bits_set = (5_usize..50_usize).into_iter().collect_vec();
     let added_vec: Vec<usize> = vec![55, 58, 60, 64, 65, 66, 80, 120];
     for n in added_vec {
-        dense_vector.push(n);
+        bits_set.push(n);
     }
 
     let mut build_rle_1 = NaiveRunLengthEncoding::new();
-    for int in &dense_vector {
+    for int in &bits_set {
         build_rle_1.push(*int);
     }
     let rle_1 = build_rle_1.to_rle();
@@ -69,9 +67,9 @@ fn main() {
             .collect_vec()
     );
 
-    let ground_truth = dense_vector.into_iter();
-    let test_rle = RunLengthEncodingIter::from_runs_vector(rle_1.get_raw_runs());
-    for (x, y) in ground_truth.zip(test_rle) {
+    let bits_set_iter = bits_set.into_iter();
+    let rle_iter = rle_1.iter();
+    for (x, y) in bits_set_iter.zip(rle_iter) {
         assert_eq!(x, y);
     }
 }
