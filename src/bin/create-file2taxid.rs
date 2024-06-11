@@ -10,7 +10,7 @@ use std::path::Path;
 use taxonomy::{ncbi, TaxRank, Taxonomy};
 use tracing::{error, info, warn};
 
-/// Prints to stdout a map in the form of <fasta-file-path>\t<tax-id> given a reference location
+/// Creates a file2taxid file of the form <fasta-file>\t<tax-id> for a given a reference location
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]

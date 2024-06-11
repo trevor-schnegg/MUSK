@@ -9,7 +9,8 @@ use musk::{
 use std::{fs::File, io::Write, path::Path};
 use tracing::{debug, info};
 
-/// Creates an ordering of files based on distances between bitmaps
+/// Creates an ordering of files based on a pairwise distance matrix
+/// This is done such that the total hamming distance of the ordering is as small as possible
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -31,7 +32,7 @@ struct Args {
     start: usize,
 
     #[arg()]
-    /// the distances file
+    /// The pairwise distances file
     distances: String,
 }
 

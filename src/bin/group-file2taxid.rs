@@ -12,7 +12,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
-/// Creates a matrix of (hamming) distances between bitmaps
+/// Groups an input file2taxid
+/// Files with the same taxid are compared and if they are similar enough, they are combined
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]

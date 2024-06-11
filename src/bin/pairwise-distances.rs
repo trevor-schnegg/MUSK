@@ -9,7 +9,7 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use tracing::info;
 
-/// Computes a pairwise distance matrix from the input sequences (or sequence groups)
+/// Computes the lower triangle of a pairwise distance matrix from the input sequences (or sequence groups)
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]

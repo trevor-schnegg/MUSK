@@ -10,8 +10,7 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use tracing::info;
 
-/// Creates a file to tax id mapping where files with the same tax id are grouped
-/// together if their k-mer spectra are similar enough.
+/// Creates a run length encoding database
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
