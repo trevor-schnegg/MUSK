@@ -54,13 +54,16 @@ fn main() {
     let output_dir_path = Path::new(&args.output_directory);
     let reference_dir_path = Path::new(&args.reference_directory);
 
-    let ordering = load_string2taxid(ordering_file_path);
+    let total_num_kmers = 4_usize.pow(args.kmer_length as u32) as f64;
+
+    let file2taxid_ordering = load_string2taxid(ordering_file_path);
 
     info!("creating roaring bitmaps for each group...");
 
     let (lowest_kmer, highest_kmer) =
         get_range(args.kmer_length, args.log_blocks, args.block_index);
-    let bitmaps = ordering
+
+    let bitmaps = file2taxid_ordering
         .par_iter()
         .progress()
         .map(|(files, _taxid)| {
@@ -79,6 +82,8 @@ fn main() {
             )
         })
         .collect::<Vec<RoaringBitmap>>();
+
+    let p_values = bitmaps.par_iter().map(|bitmap| bitmap.len() as f64 / total_num_kmers).collect::<Vec<f64>>();
 
     info!("roaring bitmaps computed, creating database...");
 
@@ -110,7 +115,7 @@ fn main() {
     );
 
     dump_data_to_file(
-        bincode::serialize(&(compressed_database, ordering)).unwrap(),
+        bincode::serialize(&(compressed_database, file2taxid_ordering, p_values)).unwrap(),
         output_dir_path,
     )
     .unwrap();
