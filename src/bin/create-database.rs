@@ -83,7 +83,10 @@ fn main() {
         })
         .collect::<Vec<RoaringBitmap>>();
 
-    let p_values = bitmaps.par_iter().map(|bitmap| bitmap.len() as f64 / total_num_kmers).collect::<Vec<f64>>();
+    let p_values = bitmaps
+        .par_iter()
+        .map(|bitmap| bitmap.len() as f64 / total_num_kmers)
+        .collect::<Vec<f64>>();
 
     info!("roaring bitmaps computed, creating database...");
 

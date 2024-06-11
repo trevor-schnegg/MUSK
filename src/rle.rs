@@ -278,7 +278,7 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
             Some(n) => {
                 // If the current run has a value, return it
                 Some(n)
-            },
+            }
             None => {
                 // Otherwise, look for a new run to iterate over
                 while let Some(run) = self.raw_runs_iter.next() {
