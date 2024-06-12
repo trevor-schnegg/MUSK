@@ -11,7 +11,7 @@ use tracing::info;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long)]
+    #[arg(short, long, default_value_t = 180)]
     /// Length to chop the read into
     length: usize,
 
@@ -20,7 +20,7 @@ struct Args {
     output_directory: String,
 
     #[arg()]
-    /// Directory with fasta reads to chop
+    /// Fasta reads file to chop
     reads: String,
 }
 
@@ -39,9 +39,12 @@ fn main() {
     let mut reads_iter = get_fasta_iterator_of_file(reads_path);
 
     while let Some(Ok(read)) = reads_iter.next() {
-        writer
-            .write(read.id(), None, &read.seq()[..args.length])
-            .unwrap();
+        let seq = if read.seq().len() < 180 {
+            read.seq()
+        } else {
+            &read.seq()[..args.length]
+        };
+        writer.write(read.id(), None, seq).unwrap();
     }
 
     info!("done!");
