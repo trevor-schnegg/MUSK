@@ -81,31 +81,38 @@ fn main() {
             }
 
             // Classify the hits
-            let mut lowest_prob = BigExpFloat::one();
-            let mut lowest_prob_index = 0;
-            for (index, hit_count) in
+            // Would do this using min_by_key but the Ord trait is difficult to implement for float types
+            let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
+            for (index, probability) in
                 collected_hits
                     .into_iter()
                     .enumerate()
                     .filter_map(|(index, hit_count)| {
+                        // Only compute if there was at least 1 hit
                         if hit_count > 0 {
-                            Some((index, hit_count))
+                            let p = p_values[index];
+                            let n = query_count;
+                            let x = hit_count;
+                            // Perform the computation using f64
+                            let prob = Binomial::new(p, n).unwrap().sf(x);
+                            // If the probability is greater than 0.0, use it
+                            let big_exp_float_prob = if prob > 0.0 {
+                                BigExpFloat::from_f64(prob)
+                            } else {
+                                // Otherwise, compute the probability using higher precision
+                                sf(p, n, x, &consts)
+                            };
+                            Some((index, big_exp_float_prob))
                         } else {
+                            // If there were 0 hits, don't compute
                             None
                         }
                     })
             {
-                let prob = Binomial::new(p_values[index], query_count)
-                    .unwrap()
-                    .sf(hit_count);
-                let big_exp_float_prob = if prob <= 0.0 {
-                    sf(p_values[index], query_count, hit_count, &consts)
-                } else {
-                    BigExpFloat::from_f64(prob)
-                };
-                if big_exp_float_prob < lowest_prob {
-                    lowest_prob = big_exp_float_prob;
-                    lowest_prob_index = index;
+                // For each index that we computed, compare to find the lowest probability
+                // If, for whatever reason, the probabilities are the same, this will use the first one
+                if probability < lowest_prob {
+                    (lowest_prob_index, lowest_prob) = (index, probability);
                 }
             }
 
