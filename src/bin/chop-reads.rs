@@ -39,7 +39,9 @@ fn main() {
     let mut reads_iter = get_fasta_iterator_of_file(reads_path);
 
     while let Some(Ok(read)) = reads_iter.next() {
-        writer.write(read.id(), None, &read.seq()[..args.length]).unwrap();
+        writer
+            .write(read.id(), None, &read.seq()[..args.length])
+            .unwrap();
     }
 
     info!("done!");
