@@ -1,7 +1,7 @@
 use bio::io::fasta;
 use clap::Parser;
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::get_fasta_iter_of_file;
+use musk::utility::{get_fasta_iter_of_file, get_fastq_iter_of_file};
 use std::fs::File;
 use std::path::Path;
 use tracing::info;
@@ -12,7 +12,7 @@ use tracing::info;
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, action)]
-    /// Length to chop the read into
+    /// Specify this flag if the file is a fasta file
     fasta: bool,
 
     #[arg(short, long, default_value_t = 180)]
@@ -52,7 +52,7 @@ fn main() {
             writer.write(read.id(), None, seq).unwrap();
         }
     } else {
-        let mut fastq_reads_iter = get_fasta_iter_of_file(reads_path);
+        let mut fastq_reads_iter = get_fastq_iter_of_file(reads_path);
 
         while let Some(Ok(read)) = fastq_reads_iter.next() {
             let seq = if read.seq().len() < 180 {
