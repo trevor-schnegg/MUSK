@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::ProgressIterator;
 use musk::io::load_string2taxid;
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::{get_fasta_files, get_fasta_iterator_of_file};
+use musk::utility::{get_fasta_files, get_fasta_iter_of_file};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -64,7 +64,7 @@ fn main() {
 
     for file in get_fasta_files(reference_dir_path).into_iter().progress() {
         // Get the first record from the fasta file
-        let first_record = match get_fasta_iterator_of_file(&file).next() {
+        let first_record = match get_fasta_iter_of_file(&file).next() {
             None => {
                 warn!(
                     "no first record found in fasta file at {:?}. skipping...",

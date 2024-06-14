@@ -1,5 +1,4 @@
-use bio::io::fasta;
-use bio::io::fasta::Records;
+use bio::io::{fasta, fastq};
 use bio::utils::TextSlice;
 use roaring::RoaringBitmap;
 use std::fs;
@@ -48,8 +47,15 @@ pub fn convert_to_uppercase(sequence: TextSlice) -> String {
     }
 }
 
-pub fn get_fasta_iterator_of_file(file_path: &Path) -> Records<BufReader<File>> {
+pub fn get_fasta_iter_of_file(file_path: &Path) -> fasta::Records<BufReader<File>> {
     match fasta::Reader::from_file(file_path) {
+        Ok(reader) => reader.records(),
+        Err(error) => panic!("{}", error),
+    }
+}
+
+pub fn get_fastq_iter_of_file(file_path: &Path) -> fastq::Records<BufReader<File>> {
+    match fastq::Reader::from_file(file_path) {
         Ok(reader) => reader.records(),
         Err(error) => panic!("{}", error),
     }
@@ -138,7 +144,7 @@ pub fn create_bitmap(
 ) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
     for file in files {
-        let mut record_iter = get_fasta_iterator_of_file(&file);
+        let mut record_iter = get_fasta_iter_of_file(&file);
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;

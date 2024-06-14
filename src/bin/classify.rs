@@ -4,7 +4,7 @@ use musk::io::load_data_from_file;
 use musk::kmer_iter::KmerIter;
 use musk::rle::RunLengthEncoding;
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::get_fasta_iterator_of_file;
+use musk::utility::get_fasta_iter_of_file;
 use musk::{big_exp_float::BigExpFloat, binomial_sf::sf};
 use num_traits::One;
 use statrs::distribution::{Binomial, DiscreteCDF};
@@ -66,7 +66,7 @@ fn main() {
             database_path,
         );
 
-    let mut read_iter = get_fasta_iterator_of_file(reads_path);
+    let mut read_iter = get_fasta_iter_of_file(reads_path);
 
     while let Some(Ok(read)) = read_iter.next() {
         let mut collected_hits = vec![0_u64; file2taxid.len()];

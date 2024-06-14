@@ -5,7 +5,7 @@ use musk::{
     io::{dump_data_to_file, load_string2taxid},
     kmer_iter::KmerIter,
     tracing::start_musk_tracing_subscriber,
-    utility::get_fasta_iterator_of_file,
+    utility::get_fasta_iter_of_file,
 };
 use rand::{
     distributions::{Distribution, Uniform},
@@ -27,7 +27,7 @@ fn create_bitmap(
 ) -> RoaringBitmap {
     let mut bitset = RoaringBitmap::new();
     for file in files {
-        let mut record_iter = get_fasta_iterator_of_file(&file);
+        let mut record_iter = get_fasta_iter_of_file(&file);
         while let Some(Ok(record)) = record_iter.next() {
             if record.seq().len() < kmer_length {
                 continue;

@@ -1,7 +1,7 @@
 use bio::io::fasta;
 use clap::Parser;
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::get_fasta_iterator_of_file;
+use musk::utility::get_fasta_iter_of_file;
 use std::fs::File;
 use std::path::Path;
 use tracing::info;
@@ -11,6 +11,10 @@ use tracing::info;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, action)]
+    /// Length to chop the read into
+    fasta: bool,
+
     #[arg(short, long, default_value_t = 180)]
     /// Length to chop the read into
     length: usize,
@@ -36,15 +40,28 @@ fn main() {
     let file = File::create(output_dir_path.join("chopped_reads.fasta")).unwrap();
     let mut writer = fasta::Writer::new(file);
 
-    let mut reads_iter = get_fasta_iterator_of_file(reads_path);
+    if args.fasta {
+        let mut fasta_reads_iter = get_fasta_iter_of_file(reads_path);
 
-    while let Some(Ok(read)) = reads_iter.next() {
-        let seq = if read.seq().len() < 180 {
-            read.seq()
-        } else {
-            &read.seq()[..args.length]
-        };
-        writer.write(read.id(), None, seq).unwrap();
+        while let Some(Ok(read)) = fasta_reads_iter.next() {
+            let seq = if read.seq().len() < 180 {
+                read.seq()
+            } else {
+                &read.seq()[..args.length]
+            };
+            writer.write(read.id(), None, seq).unwrap();
+        }
+    } else {
+        let mut fastq_reads_iter = get_fasta_iter_of_file(reads_path);
+
+        while let Some(Ok(read)) = fastq_reads_iter.next() {
+            let seq = if read.seq().len() < 180 {
+                read.seq()
+            } else {
+                &read.seq()[..args.length]
+            };
+            writer.write(read.id(), None, seq).unwrap();
+        }
     }
 
     info!("done!");
