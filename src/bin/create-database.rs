@@ -119,7 +119,7 @@ fn main() {
 
     dump_data_to_file(
         bincode::serialize(&(compressed_database, file2taxid_ordering, p_values)).unwrap(),
-        output_dir_path,
+        &output_dir_path.join("musk.db"),
     )
     .unwrap();
 
