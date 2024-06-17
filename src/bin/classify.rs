@@ -61,10 +61,14 @@ fn main() {
     let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.cutoff_threshold_exp).neg()));
     let consts = Consts::new();
 
+    info!("loading database at {:?}", database_path);
+
     let (database, file2taxid, p_values) =
         load_data_from_file::<(Vec<RunLengthEncoding>, Vec<(String, usize)>, Vec<f64>)>(
             database_path,
         );
+
+    info!("database loaded! classifying reads...");
 
     let mut read_iter = get_fasta_iter_of_file(reads_path);
 
