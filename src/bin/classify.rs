@@ -8,10 +8,12 @@ use musk::utility::get_fasta_iter_of_file;
 use musk::{big_exp_float::BigExpFloat, binomial_sf::sf};
 use num_traits::One;
 use statrs::distribution::{Binomial, DiscreteCDF};
+use threadpool::ThreadPool;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Neg;
 use std::path::Path;
+use std::sync::{mpsc, Arc};
 use tracing::{info, warn};
 
 /// Creates a run length encoding database
@@ -35,6 +37,10 @@ struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// Directory to output the read2taxid
     output_directory: String,
+
+    #[arg(short, long, default_value_t = 12)]
+    /// Number of threads to use in classification
+    thread_num: usize,
 
     #[arg()]
     /// The database file
@@ -72,66 +78,91 @@ fn main() {
 
     let mut read_iter = get_fasta_iter_of_file(reads_path);
 
+    let (sender, receiver) = mpsc::channel();
+    let pool = ThreadPool::new(args.thread_num);
+    let database_arc = Arc::new(database);
+    let file2taxid_arc = Arc::new(file2taxid);
+    let p_values_arc = Arc::new(p_values);
+    let consts_arc = Arc::new(consts);
+
     while let Some(Ok(read)) = read_iter.next() {
-        let mut collected_hits = vec![0_u64; file2taxid.len()];
-        if args.canonical {
-            // Collect the hits from the read
-            let mut query_count = 0;
-            for kmer in KmerIter::from(read.seq(), args.kmer_length, true) {
-                query_count += 1;
-                for sequence in database[kmer].iter() {
-                    collected_hits[sequence] += 1;
-                }
-            }
+        let sender_clone = sender.clone();
+        let database_arc_clone = database_arc.clone();
+        let file2taxid_arc_clone = file2taxid_arc.clone();
+        let p_values_arc_clone = p_values_arc.clone();
+        let consts_arc_clone = consts_arc.clone();
 
-            // Classify the hits
-            // Would do this using min_by_key but the Ord trait is difficult to implement for float types
-            let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-            for (index, probability) in
-                collected_hits
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(index, hit_count)| {
-                        // Only compute if there was at least 1 hit
-                        if hit_count > 0 {
-                            let p = p_values[index];
-                            let n = query_count;
-                            let x = hit_count;
-                            // Perform the computation using f64
-                            let prob = Binomial::new(p, n).unwrap().sf(x);
-                            // If the probability is greater than 0.0, use it
-                            let big_exp_float_prob = if prob > 0.0 {
-                                BigExpFloat::from_f64(prob)
+        pool.execute(move || {
+            let mut collected_hits = vec![0_u64; file2taxid_arc_clone.len()];
+
+            if args.canonical {
+                // Collect the hits from the read
+                let mut query_count = 0;
+                for kmer in KmerIter::from(read.seq(), args.kmer_length, true) {
+                    query_count += 1;
+                    for sequence in database_arc_clone[kmer].iter() {
+                        collected_hits[sequence] += 1;
+                    }
+                }
+
+                // Classify the hits
+                // Would do this using min_by_key but the Ord trait is difficult to implement for float types
+                let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
+                for (index, probability) in
+                    collected_hits
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(index, hit_count)| {
+                            // Only compute if there was at least 1 hit
+                            if hit_count > 0 {
+                                let p = p_values_arc_clone[index];
+                                let n = query_count;
+                                let x = hit_count;
+                                // Perform the computation using f64
+                                let prob = Binomial::new(p, n).unwrap().sf(x);
+                                // If the probability is greater than 0.0, use it
+                                let big_exp_float_prob = if prob > 0.0 {
+                                    BigExpFloat::from_f64(prob)
+                                } else {
+                                    // Otherwise, compute the probability using higher precision
+                                    sf(p, n, x, &consts_arc_clone)
+                                };
+                                Some((index, big_exp_float_prob))
                             } else {
-                                // Otherwise, compute the probability using higher precision
-                                sf(p, n, x, &consts)
-                            };
-                            Some((index, big_exp_float_prob))
-                        } else {
-                            // If there were 0 hits, don't compute
-                            None
-                        }
-                    })
-            {
-                // For each index that we computed, compare to find the lowest probability
-                // If, for whatever reason, the probabilities are the same, this will use the first one
-                if probability < lowest_prob {
-                    (lowest_prob_index, lowest_prob) = (index, probability);
+                                // If there were 0 hits, don't compute
+                                None
+                            }
+                        })
+                {
+                    // For each index that we computed, compare to find the lowest probability
+                    // If, for whatever reason, the probabilities are the same, this will use the first one
+                    if probability < lowest_prob {
+                        (lowest_prob_index, lowest_prob) = (index, probability);
+                    }
                 }
-            }
 
-            // Print the classification to a file
-            let taxid = if lowest_prob < cutoff_threshold {
-                file2taxid[lowest_prob_index].1
+                let taxid = if lowest_prob < cutoff_threshold {
+                    file2taxid_arc_clone[lowest_prob_index].1
+                } else {
+                    0
+                };
+
+                sender_clone.send((read.id().to_string(), taxid)).unwrap();
+
             } else {
-                0
-            };
-            output_file
-                .write(format!("{}\t{}\n", read.id(), taxid).as_bytes())
-                .expect("could not write to output file");
-        } else {
-            warn!("Haven't implemented non-canonical kmers yet");
-        }
+                warn!("Haven't implemented non-canonical kmers yet");
+            }
+        })
+
+    }
+
+    drop(sender);
+
+    for (read, taxid) in receiver {
+        // Print the classification to a file
+        output_file
+            .write(format!("{}\t{}\n", read, taxid).as_bytes())
+            .expect("could not write to output file");
     }
 
     info!("done!");
