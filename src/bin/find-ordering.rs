@@ -1,6 +1,4 @@
 use clap::Parser;
-use concorde_rs::{solver, LowerDistanceMatrix};
-use itertools::Itertools;
 use musk::{
     io::load_data_from_file,
     tracing::start_musk_tracing_subscriber,
@@ -15,14 +13,6 @@ use tracing::{debug, info};
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, action)]
-    /// Flag that specifies using the Held-Karp algorithm to solve TSP
-    held_karp: bool,
-
-    #[arg(short, long, action)]
-    /// Flag that specifies using the Lin-Kernighan algorithm to solve TSP
-    lin_kernighan: bool,
-
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// Directory to output the file2taxid file
     output_directory: String,
@@ -56,31 +46,12 @@ fn main() {
     debug!("length of distances: {}", distances.len());
     info!("distances loaded! finding ordering...");
 
-    let ordering = if args.lin_kernighan || args.held_karp {
-        // Flatten the distance matrix
-        let dist_mat = LowerDistanceMatrix::new(
-            distances.len() as u32,
-            distances.iter().flat_map(|row| row.clone()).collect_vec(),
-        );
+    // Perform the greedy solution
+    let greedy_ordering = greedy_ordering(&distances, args.start);
+    let avg_dist_output = average_hamming_distance(&greedy_ordering, &distances);
+    debug!("length of tour: {}", avg_dist_output.1);
 
-        if args.lin_kernighan {
-            let solution = solver::tsp_lk(&dist_mat).unwrap();
-            debug!("length of tour: {}", solution.length);
-            solution.tour.iter().map(|x| *x as usize).collect_vec()
-        } else {
-            let solution = solver::tsp_hk(&dist_mat).unwrap();
-            debug!("length of tour: {}", solution.length);
-            solution.tour.iter().map(|x| *x as usize).collect_vec()
-        }
-    } else {
-        // Perform the greedy solution
-        let greedy_ordering = greedy_ordering(&distances, args.start);
-        let avg_dist_output = average_hamming_distance(&greedy_ordering, &distances);
-        debug!("length of tour: {}", avg_dist_output.1);
-        greedy_ordering
-    };
-
-    for index in ordering {
+    for index in greedy_ordering {
         let (files_string, taxid) = &file2taxid[index];
         output_file
             .write(format!("{}\t{}\n", *files_string, *taxid).as_bytes())

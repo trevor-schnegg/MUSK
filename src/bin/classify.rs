@@ -8,12 +8,12 @@ use musk::utility::get_fasta_iter_of_file;
 use musk::{big_exp_float::BigExpFloat, binomial_sf::sf};
 use num_traits::One;
 use statrs::distribution::{Binomial, DiscreteCDF};
-use threadpool::ThreadPool;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Neg;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
+use threadpool::ThreadPool;
 use tracing::{info, warn};
 
 /// Creates a run length encoding database
@@ -148,12 +148,10 @@ fn main() {
                 };
 
                 sender_clone.send((read.id().to_string(), taxid)).unwrap();
-
             } else {
                 warn!("Haven't implemented non-canonical kmers yet");
             }
         })
-
     }
 
     drop(sender);
