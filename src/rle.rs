@@ -1,7 +1,7 @@
 use bit_iter::BitIter;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::{slice::Iter, vec::IntoIter};
+use std::slice::Iter;
 use tracing::warn;
 
 const MAX_UNCOMPRESSED_BITS: usize = 15;
@@ -257,7 +257,7 @@ fn decompress_buffer(buffer: &mut Vec<Run>) -> Run {
 pub struct RunLengthEncodingIter<'a> {
     curr_i: usize,
     raw_runs_iter: Iter<'a, u16>,
-    curr_run_iter: IntoIter<usize>,
+    curr_run_iter: Box<dyn Iterator<Item = usize> + 'a>,
 }
 
 impl<'a> RunLengthEncodingIter<'a> {
@@ -265,7 +265,7 @@ impl<'a> RunLengthEncodingIter<'a> {
         RunLengthEncodingIter {
             curr_i: 0,
             raw_runs_iter: runs.iter(),
-            curr_run_iter: (0_usize..0_usize).collect_vec().into_iter(),
+            curr_run_iter: Box::new(0..0),
         }
     }
 }
@@ -289,18 +289,16 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
                         }
                         Run::Ones(count) => {
                             // If the run is ones, create a new curr_run_iter and return the first value
-                            self.curr_run_iter = (self.curr_i..self.curr_i + count as usize)
-                                .collect_vec()
-                                .into_iter();
+                            self.curr_run_iter =
+                                Box::new(self.curr_i..self.curr_i + count as usize);
                             self.curr_i += count as usize;
                             return self.curr_run_iter.next();
                         }
                         Run::Uncompressed(bits) => {
                             // If the run is uncompressed, create new curr_run_iter over it and return the first value
-                            self.curr_run_iter = BitIter::from(bits)
-                                .map(|x| x + self.curr_i)
-                                .collect_vec()
-                                .into_iter();
+                            let curr_i = self.curr_i.clone();
+                            self.curr_run_iter =
+                                Box::new(BitIter::from(bits).map(move |x| x + curr_i));
                             self.curr_i += MAX_UNCOMPRESSED_BITS;
                             return self.curr_run_iter.next();
                         }
