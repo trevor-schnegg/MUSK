@@ -3,7 +3,7 @@ use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use musk::io::load_string2taxid;
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::{create_bitmap, get_range};
+use musk::utility::create_bitmap;
 use rayon::iter::IntoParallelIterator;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
