@@ -42,8 +42,6 @@ fn main() {
 
     info!("getting kmer counts...");
 
-    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, 12, 667);
-
     let bitmaps = load_string2taxid(files2taxid)
         .into_par_iter()
         .progress()
@@ -56,8 +54,6 @@ fn main() {
             create_bitmap(
                 file_paths,
                 args.kmer_length,
-                lowest_kmer,
-                highest_kmer,
                 false,
                 false,
             )
@@ -73,23 +69,19 @@ fn main() {
     info!("kmer counts collected! finding the number of times each count occurs...");
 
     for (kmer, number_of_ones) in kmer_counts.iter().enumerate() {
-        if lowest_kmer <= kmer && kmer < highest_kmer {
-            println!("{}\t{}", kmer, number_of_ones);
-        }
+        println!("{}\t{}", kmer, number_of_ones);
     }
 
     println!("========== END INDIVIDUAL KMERS ==========");
 
     let mut num_ones_to_count = HashMap::new();
 
-    for (kmer, num_ones) in kmer_counts.into_iter().enumerate() {
-        if lowest_kmer <= kmer && kmer < highest_kmer {
-            match num_ones_to_count.get_mut(&num_ones) {
-                None => {
-                    num_ones_to_count.insert(num_ones, 1_usize);
-                }
-                Some(count) => *count += 1,
+    for (_kmer, num_ones) in kmer_counts.into_iter().enumerate() {
+        match num_ones_to_count.get_mut(&num_ones) {
+            None => {
+                num_ones_to_count.insert(num_ones, 1_usize);
             }
+            Some(count) => *count += 1,
         }
     }
 

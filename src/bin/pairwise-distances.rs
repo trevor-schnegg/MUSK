@@ -3,7 +3,7 @@ use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use musk::io::{dump_data_to_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::{create_bitmap, get_range};
+use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
@@ -62,9 +62,6 @@ fn main() {
         file2taxid.len()
     );
 
-    let (lowest_kmer, highest_kmer) =
-        get_range(args.kmer_length, args.log_blocks, args.block_index);
-
     let bitmaps = file2taxid
         .par_iter()
         .progress()
@@ -74,14 +71,7 @@ fn main() {
                 .map(|file| reference_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(
-                file_paths,
-                args.kmer_length,
-                lowest_kmer,
-                highest_kmer,
-                false,
-                args.canonical,
-            )
+            create_bitmap(file_paths, args.kmer_length, false, args.canonical)
         })
         .collect::<Vec<RoaringBitmap>>();
 

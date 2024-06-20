@@ -137,8 +137,6 @@ pub fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (us
 pub fn create_bitmap(
     files: Vec<PathBuf>,
     kmer_length: usize,
-    lowest_kmer: usize,
-    highest_kmer: usize,
     xor: bool,
     canonical: bool,
 ) -> RoaringBitmap {
@@ -151,9 +149,7 @@ pub fn create_bitmap(
             }
             for kmer in KmerIter::from(record.seq(), kmer_length, canonical) {
                 let kmer = if xor { kmer ^ XOR_NUMBER } else { kmer };
-                if lowest_kmer <= kmer && kmer < highest_kmer {
-                    bitmap.insert(kmer as u32);
-                }
+                bitmap.insert(kmer as u32);
             }
         }
     }

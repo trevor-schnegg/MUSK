@@ -3,7 +3,7 @@ use indicatif::ParallelProgressIterator;
 use musk::explore::connected_components;
 use musk::io::load_string2taxid;
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::{create_bitmap, get_range};
+use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::collections::HashMap;
@@ -69,8 +69,6 @@ fn main() {
 
     info!("file2taxid loaded! exploring files with the same tax id");
 
-    let (lowest_kmer, highest_kmer) = get_range(args.kmer_length, 0, 0);
-
     for (taxid, files) in taxid2files {
         // If there is only 1 file, no comparisons are needed
         if files.len() == 1 {
@@ -95,16 +93,7 @@ fn main() {
         let bitmaps = file_paths
             .into_par_iter()
             .progress()
-            .map(|file| {
-                create_bitmap(
-                    vec![file],
-                    args.kmer_length,
-                    lowest_kmer,
-                    highest_kmer,
-                    false,
-                    args.canonical,
-                )
-            })
+            .map(|file| create_bitmap(vec![file], args.kmer_length, false, args.canonical))
             .collect::<Vec<RoaringBitmap>>();
 
         debug!("bitmaps created! performing comparisons...");
