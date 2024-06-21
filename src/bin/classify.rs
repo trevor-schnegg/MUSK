@@ -13,8 +13,9 @@ use std::io::Write;
 use std::ops::Neg;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
+use std::time::Instant;
 use threadpool::ThreadPool;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Creates a run length encoding database
 #[derive(Parser)]
@@ -98,16 +99,19 @@ fn main() {
             if args.canonical {
                 // Collect the hits from the read
                 let mut query_count = 0;
+                let queries_start = Instant::now();
                 for kmer in KmerIter::from(read.seq(), args.kmer_length, true) {
                     query_count += 1;
                     for sequence in database_arc_clone[kmer].iter() {
                         collected_hits[sequence] += 1;
                     }
                 }
+                debug!("time elapsed for queries: {:?}", queries_start.elapsed());
 
                 // Classify the hits
                 // Would do this using min_by_key but the Ord trait is difficult to implement for float types
                 let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
+                let classificaiton_start = Instant::now();
                 for (index, probability) in
                     collected_hits
                         .into_iter()
@@ -140,6 +144,7 @@ fn main() {
                         (lowest_prob_index, lowest_prob) = (index, probability);
                     }
                 }
+                debug!("time elapsed for classification: {:?}", classificaiton_start.elapsed());
 
                 let taxid = if lowest_prob < cutoff_threshold {
                     file2taxid_arc_clone[lowest_prob_index].1
