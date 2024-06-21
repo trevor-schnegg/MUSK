@@ -29,6 +29,8 @@ struct Args {
     canonical: bool,
 
     #[arg(short, long, default_value_t = 12)]
+    /// The exponent e for the significance of hits
+    /// Used in the equation 10^{-e} to determine significance
     cutoff_threshold_exp: i32,
 
     #[arg(short, long, default_value_t = 14)]
@@ -38,6 +40,10 @@ struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// Directory to output the read2taxid
     output_directory: String,
+
+    #[arg(short, long, default_value_t = 100)]
+    /// Number of queries to sample
+    query_number: u64,
 
     #[arg(short, long, default_value_t = 12)]
     /// Number of threads to use in classification
@@ -70,10 +76,12 @@ fn main() {
 
     info!("loading database at {:?}", database_path);
 
-    let (database, file2taxid, p_values) =
-        load_data_from_file::<(Vec<RunLengthEncoding>, Vec<(String, usize)>, Vec<f64>)>(
-            database_path,
-        );
+    let (database, file2taxid, p_values, significant_hits) = load_data_from_file::<(
+        Vec<RunLengthEncoding>,
+        Vec<(String, usize)>,
+        Vec<f64>,
+        Vec<u64>,
+    )>(database_path);
 
     info!("database loaded! classifying reads...");
 
@@ -84,6 +92,7 @@ fn main() {
     let database_arc = Arc::new(database);
     let file2taxid_arc = Arc::new(file2taxid);
     let p_values_arc = Arc::new(p_values);
+    let significant_hits_arc = Arc::new(significant_hits);
     let consts_arc = Arc::new(consts);
 
     while let Some(Ok(read)) = read_iter.next() {
@@ -91,6 +100,7 @@ fn main() {
         let database_arc_clone = database_arc.clone();
         let file2taxid_arc_clone = file2taxid_arc.clone();
         let p_values_arc_clone = p_values_arc.clone();
+        let significant_hits_arc_clone = significant_hits_arc.clone();
         let consts_arc_clone = consts_arc.clone();
 
         pool.execute(move || {
@@ -117,8 +127,12 @@ fn main() {
                         .into_iter()
                         .enumerate()
                         .filter_map(|(index, hit_count)| {
-                            // Only compute if there was at least 1 hit
-                            if hit_count > 0 {
+                            let hit_count = ((hit_count as f64 / query_count as f64)
+                                * args.query_number as f64)
+                                .round() as u64;
+
+                            // Only compute if the number of hits is more than significant
+                            if hit_count > significant_hits_arc_clone[index] {
                                 let p = p_values_arc_clone[index];
                                 let n = query_count;
                                 let x = hit_count;
@@ -144,7 +158,10 @@ fn main() {
                         (lowest_prob_index, lowest_prob) = (index, probability);
                     }
                 }
-                debug!("time elapsed for classification: {:?}", classificaiton_start.elapsed());
+                debug!(
+                    "time elapsed for classification: {:?}",
+                    classificaiton_start.elapsed()
+                );
 
                 let taxid = if lowest_prob < cutoff_threshold {
                     file2taxid_arc_clone[lowest_prob_index].1

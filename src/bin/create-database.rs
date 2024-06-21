@@ -7,6 +7,8 @@ use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
+use statrs::distribution::{Binomial, DiscreteCDF};
+use std::ops::Neg;
 use std::path::Path;
 use tracing::info;
 
@@ -23,6 +25,11 @@ struct Args {
     /// Flag that specifies whether or not to use canonical kmers
     canonical: bool,
 
+    #[arg(short, long, default_value_t = 12)]
+    /// The exponent e for the significance of hits
+    /// Used in the equation 10^{-e} to determine significance
+    cutoff_threshold_exp: i32,
+
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
@@ -34,6 +41,10 @@ struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// Directory to output the file2taxid file
     output_directory: String,
+
+    #[arg(short, long, default_value_t = 100)]
+    /// Number of queries to sample
+    query_number: u64,
 
     #[arg()]
     /// The ordered file2taxid of the sequences
@@ -50,6 +61,8 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
+    let cutoff_threshold = 10.0_f64.powi((args.cutoff_threshold_exp).neg());
+    let n = args.query_number;
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_dir_path = Path::new(&args.output_directory);
     let reference_dir_path = Path::new(&args.reference_directory);
@@ -77,6 +90,11 @@ fn main() {
         .par_iter()
         .map(|bitmap| bitmap.len() as f64 / total_num_kmers)
         .collect::<Vec<f64>>();
+
+    let significant_hits = p_values
+        .par_iter()
+        .map(|p| Binomial::new(*p, n).unwrap().inverse_cdf(cutoff_threshold))
+        .collect::<Vec<u64>>();
 
     info!("roaring bitmaps computed, creating database...");
 
@@ -108,7 +126,13 @@ fn main() {
     );
 
     dump_data_to_file(
-        bincode::serialize(&(compressed_database, file2taxid_ordering, p_values)).unwrap(),
+        bincode::serialize(&(
+            compressed_database,
+            file2taxid_ordering,
+            p_values,
+            significant_hits,
+        ))
+        .unwrap(),
         &output_dir_path.join("musk.db"),
     )
     .unwrap();
