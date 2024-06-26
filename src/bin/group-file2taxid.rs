@@ -27,8 +27,8 @@ struct Args {
     kmer_length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Directory to output the file2taxid file
-    output_directory: String,
+    /// Name of the output file
+    output_file: String,
 
     #[arg()]
     /// the file2taxid file
@@ -48,11 +48,15 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let file2taxid_path = Path::new(&args.file2taxid);
-    let output_dir_path = Path::new(&args.output_directory);
+    let output_dir_path = Path::new(&args.output_file);
     let reference_dir_path = Path::new(&args.reference_directory);
 
-    let mut output_file = File::create(output_dir_path.join("musk.grouped.file2taxid"))
-        .expect("could not create output file");
+    // Create the output file
+    let mut output_file = if args.canonical {
+        File::create(output_dir_path.join(".musk.g.c.f2t")).expect("could not create output file")
+    } else {
+        File::create(output_dir_path.join(".musk.g.f2t")).expect("could not create output file")
+    };
 
     info!("loading file2taxid at {}", args.file2taxid);
 
@@ -93,7 +97,7 @@ fn main() {
         let bitmaps = file_paths
             .into_par_iter()
             .progress()
-            .map(|file| create_bitmap(vec![file], args.kmer_length, false, args.canonical))
+            .map(|file| create_bitmap(vec![file], args.kmer_length, args.canonical))
             .collect::<Vec<RoaringBitmap>>();
 
         debug!("bitmaps created! performing comparisons...");

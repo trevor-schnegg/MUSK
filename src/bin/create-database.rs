@@ -1,13 +1,12 @@
 use clap::Parser;
-use indicatif::{ParallelProgressIterator, ProgressIterator};
+use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
+use musk::database::Database;
 use musk::io::{dump_data_to_file, load_string2taxid};
-use musk::rle::{NaiveRunLengthEncoding, RunLengthEncoding};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
-use statrs::distribution::{Binomial, DiscreteCDF};
 use std::ops::Neg;
 use std::path::Path;
 use tracing::info;
@@ -17,34 +16,30 @@ use tracing::info;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = 0)]
-    /// The index of the block to use
-    block_index: usize,
-
     #[arg(short, long, action)]
     /// Flag that specifies whether or not to use canonical kmers
     canonical: bool,
 
-    #[arg(short, long, default_value_t = 12)]
+    #[arg(short, long, default_value_t = 18)]
     /// The exponent e for the significance of hits
-    /// Used in the equation 10^{-e} to determine significance
+    /// Used in the equation 10^{-e} to determine statistical significance
     cutoff_threshold_exp: i32,
 
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
-    #[arg(short, long, default_value_t = 0)]
-    /// 2^{log_blocks} partitions
-    log_blocks: u32,
+    #[arg(short, long, default_value_t = 150)]
+    /// Number of queries to sample
+    num_queries: u64,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// Directory to output the file2taxid file
     output_directory: String,
 
-    #[arg(short, long, default_value_t = 100)]
+    #[arg(short, long)]
     /// Number of queries to sample
-    query_number: u64,
+    remove_runs: Option<usize>,
 
     #[arg()]
     /// The ordered file2taxid of the sequences
@@ -62,13 +57,11 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let cutoff_threshold = 10.0_f64.powi((args.cutoff_threshold_exp).neg());
-    let n = args.query_number;
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_dir_path = Path::new(&args.output_directory);
     let reference_dir_path = Path::new(&args.reference_directory);
 
-    let total_num_kmers = 4_usize.pow(args.kmer_length as u32) as f64;
-
+    // Load the file2taxid ordering
     let file2taxid_ordering = load_string2taxid(ordering_file_path);
 
     info!("creating roaring bitmaps for each group...");
@@ -82,57 +75,30 @@ fn main() {
                 .map(|file| reference_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(file_paths, args.kmer_length, false, args.canonical)
+            create_bitmap(file_paths, args.kmer_length, args.canonical)
         })
         .collect::<Vec<RoaringBitmap>>();
 
-    let p_values = bitmaps
-        .par_iter()
-        .map(|bitmap| bitmap.len() as f64 / total_num_kmers)
-        .collect::<Vec<f64>>();
+    info!("raring bitmaps created! constructing database...");
 
-    let significant_hits = p_values
-        .par_iter()
-        .map(|p| Binomial::new(*p, n).unwrap().inverse_cdf(cutoff_threshold))
-        .collect::<Vec<u64>>();
+    let mut database = Database::from(
+        bitmaps,
+        args.canonical,
+        cutoff_threshold,
+        file2taxid_ordering,
+        args.kmer_length,
+        args.num_queries,
+    );
 
-    info!("roaring bitmaps computed, creating database...");
-
-    let mut database =
-        vec![NaiveRunLengthEncoding::new(); (4 as usize).pow(args.kmer_length as u32)];
-
-    for (index, bitmap) in bitmaps.into_iter().progress().enumerate() {
-        for kmer in bitmap {
-            database[kmer as usize].push(index);
+    match args.remove_runs {
+        None => {}
+        Some(num_ones) => {
+            database.lossy_compression(num_ones);
         }
     }
 
-    let naive_database_runs = database
-        .iter()
-        .map(|build_rle| build_rle.get_raw_runs().len())
-        .sum::<usize>();
-    let compressed_database = database
-        .into_par_iter()
-        .map(|build_rle| build_rle.to_rle())
-        .collect::<Vec<RunLengthEncoding>>();
-    let compressed_database_runs = compressed_database
-        .iter()
-        .map(|rle| rle.get_raw_runs().len())
-        .sum::<usize>();
-
-    info!(
-        "{}\t{}\t{}\t{}",
-        args.log_blocks, args.block_index, compressed_database_runs, naive_database_runs
-    );
-
     dump_data_to_file(
-        bincode::serialize(&(
-            compressed_database,
-            file2taxid_ordering,
-            p_values,
-            significant_hits,
-        ))
-        .unwrap(),
+        bincode::serialize(&database).unwrap(),
         &output_dir_path.join("musk.db"),
     )
     .unwrap();

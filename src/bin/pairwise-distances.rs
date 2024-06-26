@@ -6,6 +6,7 @@ use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
+use std::fs::File;
 use std::path::Path;
 use tracing::info;
 
@@ -15,12 +16,8 @@ use tracing::info;
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Directory to output the file2taxid file
-    output_directory: String,
-
-    #[arg(short, long, default_value_t = 0)]
-    /// The index of the block to use
-    block_index: usize,
+    /// Name of the output file
+    output_file: String,
 
     #[arg(short, long, action)]
     /// Flag that specifies whether or not to use canonical kmers
@@ -29,10 +26,6 @@ struct Args {
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
-
-    #[arg(short, long, default_value_t = 0)]
-    /// 2^{log_blocks} partitions
-    log_blocks: u32,
 
     #[arg()]
     /// the file2taxid file
@@ -50,8 +43,11 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let file2taxid_path = Path::new(&args.file2taxid);
-    let output_dir_path = Path::new(&args.output_directory);
+    let output_file_path = Path::new(&args.output_file);
     let reference_dir_path = Path::new(&args.reference_directory);
+
+    // Create the output file so it errors if an incorrect output file is provided before computation
+    File::create(output_file_path.join(".musk.pd")).expect("could not create output file");
 
     info!("loading files2taxid at {}", args.file2taxid);
 
@@ -71,7 +67,7 @@ fn main() {
                 .map(|file| reference_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(file_paths, args.kmer_length, false, args.canonical)
+            create_bitmap(file_paths, args.kmer_length, args.canonical)
         })
         .collect::<Vec<RoaringBitmap>>();
 
@@ -102,7 +98,7 @@ fn main() {
 
     dump_data_to_file(
         bincode::serialize(&(distances, file2taxid)).unwrap(),
-        &output_dir_path.join("musk.pairwise_distances"),
+        &output_file_path.join(".musk.pd"),
     )
     .unwrap();
 

@@ -134,12 +134,7 @@ pub fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (us
 }
 
 // Creates a single bitmap containing k-mers from all files, if necessary
-pub fn create_bitmap(
-    files: Vec<PathBuf>,
-    kmer_length: usize,
-    xor: bool,
-    canonical: bool,
-) -> RoaringBitmap {
+pub fn create_bitmap(files: Vec<PathBuf>, kmer_length: usize, canonical: bool) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
     for file in files {
         let mut record_iter = get_fasta_iter_of_file(&file);
@@ -148,7 +143,6 @@ pub fn create_bitmap(
                 continue;
             }
             for kmer in KmerIter::from(record.seq(), kmer_length, canonical) {
-                let kmer = if xor { kmer ^ XOR_NUMBER } else { kmer };
                 bitmap.insert(kmer as u32);
             }
         }

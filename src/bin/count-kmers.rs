@@ -51,7 +51,7 @@ fn main() {
                 .map(|file| reference_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(file_paths, args.kmer_length, false, false)
+            create_bitmap(file_paths, args.kmer_length, false)
         })
         .collect::<Vec<RoaringBitmap>>();
 

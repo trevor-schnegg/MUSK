@@ -16,8 +16,8 @@ use tracing::{error, info, warn};
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Directory to output the file2taxid file
-    output_directory: String,
+    /// Name of the output file
+    output_file: String,
 
     #[arg()]
     /// Accession2taxid file
@@ -39,11 +39,12 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let accession2taxid_path = Path::new(&args.accession2taxid);
-    let output_dir_path = Path::new(&args.output_directory);
+    let output_file_path = Path::new(&args.output_file);
     let reference_dir_path = Path::new(&args.reference_directory);
 
-    let mut output_file = File::create(output_dir_path.join("musk.file2taxid"))
-        .expect("could not create output file");
+    // Add extension to the output file
+    let mut output_file =
+        File::create(output_file_path.join(".musk.f2t")).expect("could not create output file");
 
     info!("reading accession2taxid at {}", args.accession2taxid);
 
