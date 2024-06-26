@@ -1,16 +1,25 @@
 use indicatif::ProgressIterator;
+use num_traits::One;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
+use std::time::Instant;
 use tracing::{debug, info};
 
-use crate::rle::{NaiveRunLengthEncoding, RunLengthEncoding};
+use crate::{
+    big_exp_float::BigExpFloat,
+    binomial_sf::sf,
+    consts::Consts,
+    kmer_iter::KmerIter,
+    rle::{NaiveRunLengthEncoding, RunLengthEncoding},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
     canonical: bool,
-    cutoff_threshold: f64,
+    consts: Consts,
+    cutoff_threshold: BigExpFloat,
     file2taxid: Vec<(String, usize)>,
     kmer_len: usize,
     kmer_runs: Vec<RunLengthEncoding>,
@@ -76,7 +85,8 @@ impl Database {
 
         Database {
             canonical,
-            cutoff_threshold,
+            consts: Consts::new(),
+            cutoff_threshold: BigExpFloat::from_f64(cutoff_threshold),
             file2taxid,
             kmer_len,
             kmer_runs,
@@ -95,6 +105,7 @@ impl Database {
 
     fn recompute_statistics(&mut self) -> () {
         let total_num_kmers = 4_usize.pow(self.kmer_len as u32) as f64;
+        let cutoff_threshold = self.cutoff_threshold.as_f64();
 
         let mut file2kmer_num = vec![0_usize; self.file2taxid.len()];
 
@@ -114,11 +125,77 @@ impl Database {
             .map(|p| {
                 Binomial::new(*p, self.num_queries)
                     .unwrap()
-                    .inverse_cdf(self.cutoff_threshold)
+                    .inverse_cdf(cutoff_threshold)
             })
             .collect::<Vec<u64>>();
 
         self.p_values = p_values;
         self.significant_hits = significant_hits;
+    }
+
+    pub fn classify(&self, read: &[u8]) -> usize {
+        let mut collected_hits = vec![0_u64; self.file2taxid.len()];
+
+        // Collect the hits from the read
+        let mut query_count = 0;
+        let queries_start = Instant::now();
+        for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
+            query_count += 1;
+            for sequence in self.kmer_runs[kmer].iter() {
+                collected_hits[sequence] += 1;
+            }
+        }
+        debug!("time elapsed for queries: {:?}", queries_start.elapsed());
+
+        // Classify the hits
+        // Would do this using min_by_key but the Ord trait is difficult to implement for float types
+        let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
+        let classificaiton_start = Instant::now();
+        for (index, probability) in
+            collected_hits
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, hit_count)| {
+                    let hit_count = ((hit_count as f64 / query_count as f64)
+                        * self.num_queries as f64)
+                        .round() as u64;
+
+                    // Only compute if the number of hits is more than significant
+                    if hit_count > self.significant_hits[index] {
+                        let p = self.p_values[index];
+                        let n = query_count;
+                        let x = hit_count;
+                        // Perform the computation using f64
+                        let prob = Binomial::new(p, n).unwrap().sf(x);
+                        // If the probability is greater than 0.0, use it
+                        let big_exp_float_prob = if prob > 0.0 {
+                            BigExpFloat::from_f64(prob)
+                        } else {
+                            // Otherwise, compute the probability using higher precision
+                            sf(p, n, x, &self.consts)
+                        };
+                        Some((index, big_exp_float_prob))
+                    } else {
+                        // If there were 0 hits, don't compute
+                        None
+                    }
+                })
+        {
+            // For each index that we computed, compare to find the lowest probability
+            // If, for whatever reason, the probabilities are the same, this will use the first one
+            if probability < lowest_prob {
+                (lowest_prob_index, lowest_prob) = (index, probability);
+            }
+        }
+        debug!(
+            "time elapsed for classification: {:?}",
+            classificaiton_start.elapsed()
+        );
+
+        if lowest_prob < self.cutoff_threshold {
+            self.file2taxid[lowest_prob_index].1
+        } else {
+            0
+        }
     }
 }

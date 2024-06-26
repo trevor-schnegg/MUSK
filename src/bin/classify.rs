@@ -1,21 +1,14 @@
 use clap::Parser;
-use musk::consts::Consts;
+use musk::database::Database;
 use musk::io::load_data_from_file;
-use musk::kmer_iter::KmerIter;
-use musk::rle::RunLengthEncoding;
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fasta_iter_of_file;
-use musk::{big_exp_float::BigExpFloat, binomial_sf::sf};
-use num_traits::One;
-use statrs::distribution::{Binomial, DiscreteCDF};
 use std::fs::File;
 use std::io::Write;
-use std::ops::Neg;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
-use std::time::Instant;
 use threadpool::ThreadPool;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 /// Creates a run length encoding database
 #[derive(Parser)]
@@ -28,11 +21,6 @@ struct Args {
     /// Otherwise, the forward and reverse complement will be queried
     canonical: bool,
 
-    #[arg(short, long, default_value_t = 12)]
-    /// The exponent e for the significance of hits
-    /// Used in the equation 10^{-e} to determine significance
-    cutoff_threshold_exp: i32,
-
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer in the database
     kmer_length: usize,
@@ -40,10 +28,6 @@ struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// Directory to output the read2taxid
     output_directory: String,
-
-    #[arg(short, long, default_value_t = 100)]
-    /// Number of queries to sample
-    query_number: u64,
 
     #[arg(short, long, default_value_t = 12)]
     /// Number of threads to use in classification
@@ -71,17 +55,9 @@ fn main() {
     let mut output_file =
         File::create(output_dir_path.join("readid2taxid")).expect("could not create output file");
 
-    let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.cutoff_threshold_exp).neg()));
-    let consts = Consts::new();
-
     info!("loading database at {:?}", database_path);
 
-    let (database, file2taxid, p_values, significant_hits) = load_data_from_file::<(
-        Vec<RunLengthEncoding>,
-        Vec<(String, usize)>,
-        Vec<f64>,
-        Vec<u64>,
-    )>(database_path);
+    let database = load_data_from_file::<Database>(database_path);
 
     info!("database loaded! classifying reads...");
 
@@ -90,89 +66,18 @@ fn main() {
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(args.thread_num);
     let database_arc = Arc::new(database);
-    let file2taxid_arc = Arc::new(file2taxid);
-    let p_values_arc = Arc::new(p_values);
-    let significant_hits_arc = Arc::new(significant_hits);
-    let consts_arc = Arc::new(consts);
 
     while let Some(Ok(read)) = read_iter.next() {
         let sender_clone = sender.clone();
         let database_arc_clone = database_arc.clone();
-        let file2taxid_arc_clone = file2taxid_arc.clone();
-        let p_values_arc_clone = p_values_arc.clone();
-        let significant_hits_arc_clone = significant_hits_arc.clone();
-        let consts_arc_clone = consts_arc.clone();
 
         pool.execute(move || {
-            let mut collected_hits = vec![0_u64; file2taxid_arc_clone.len()];
-
-            if args.canonical {
-                // Collect the hits from the read
-                let mut query_count = 0;
-                let queries_start = Instant::now();
-                for kmer in KmerIter::from(read.seq(), args.kmer_length, true) {
-                    query_count += 1;
-                    for sequence in database_arc_clone[kmer].iter() {
-                        collected_hits[sequence] += 1;
-                    }
-                }
-                debug!("time elapsed for queries: {:?}", queries_start.elapsed());
-
-                // Classify the hits
-                // Would do this using min_by_key but the Ord trait is difficult to implement for float types
-                let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-                let classificaiton_start = Instant::now();
-                for (index, probability) in
-                    collected_hits
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(index, hit_count)| {
-                            let hit_count = ((hit_count as f64 / query_count as f64)
-                                * args.query_number as f64)
-                                .round() as u64;
-
-                            // Only compute if the number of hits is more than significant
-                            if hit_count > significant_hits_arc_clone[index] {
-                                let p = p_values_arc_clone[index];
-                                let n = query_count;
-                                let x = hit_count;
-                                // Perform the computation using f64
-                                let prob = Binomial::new(p, n).unwrap().sf(x);
-                                // If the probability is greater than 0.0, use it
-                                let big_exp_float_prob = if prob > 0.0 {
-                                    BigExpFloat::from_f64(prob)
-                                } else {
-                                    // Otherwise, compute the probability using higher precision
-                                    sf(p, n, x, &consts_arc_clone)
-                                };
-                                Some((index, big_exp_float_prob))
-                            } else {
-                                // If there were 0 hits, don't compute
-                                None
-                            }
-                        })
-                {
-                    // For each index that we computed, compare to find the lowest probability
-                    // If, for whatever reason, the probabilities are the same, this will use the first one
-                    if probability < lowest_prob {
-                        (lowest_prob_index, lowest_prob) = (index, probability);
-                    }
-                }
-                debug!(
-                    "time elapsed for classification: {:?}",
-                    classificaiton_start.elapsed()
-                );
-
-                let taxid = if lowest_prob < cutoff_threshold {
-                    file2taxid_arc_clone[lowest_prob_index].1
-                } else {
-                    0
-                };
-
-                sender_clone.send((read.id().to_string(), taxid)).unwrap();
-            } else {
-                warn!("Haven't implemented non-canonical kmers yet");
-            }
+            sender_clone
+                .send((
+                    read.id().to_string(),
+                    database_arc_clone.classify(read.seq()),
+                ))
+                .unwrap();
         })
     }
 
