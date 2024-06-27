@@ -43,8 +43,8 @@ fn main() {
     let reference_dir_path = Path::new(&args.reference_directory);
 
     // Add extension to the output file
-    let mut output_file =
-        File::create(output_file_path.join(".musk.f2t")).expect("could not create output file");
+    let mut output_file = File::create(output_file_path.with_extension(".musk.f2t"))
+        .expect("could not create output file");
 
     info!("reading accession2taxid at {}", args.accession2taxid);
 

@@ -38,7 +38,7 @@ struct Args {
     output_directory: String,
 
     #[arg(short, long)]
-    /// Number of queries to sample
+    /// Remove runs with count of ones <= to the input number
     remove_runs: Option<usize>,
 
     #[arg()]
