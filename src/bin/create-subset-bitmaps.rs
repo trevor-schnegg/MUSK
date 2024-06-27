@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use musk::{
-    io::{dump_data_to_file, load_string2taxid},
+    io::{create_output_file, dump_data_to_file, load_string2taxid},
     kmer_iter::KmerIter,
     tracing::start_musk_tracing_subscriber,
     utility::get_fasta_iter_of_file,
@@ -62,7 +62,7 @@ struct Args {
 
     #[arg()]
     /// Location to output the serialzed bitmaps
-    output_file: String,
+    output_location: String,
 
     #[arg()]
     /// Directory with fasta files to create reference from
@@ -77,11 +77,13 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let output_path = Path::new(&args.output_file);
+    let output_loc_path = Path::new(&args.output_location);
     let ordering_path = Path::new(&args.ordering);
     let reference_path = Path::new(&args.reference_location);
 
     let total_kmers = 4_usize.pow(args.kmer_length as u32);
+
+    let mut output_file = create_output_file(output_loc_path, "musk.subset.bitmaps");
 
     info!("loading ordering at {:?}", ordering_path);
 
@@ -119,7 +121,7 @@ fn main() {
 
     dump_data_to_file(
         bincode::serialize(&(kmer_subset, outputs)).unwrap(),
-        output_path,
+        &mut output_file,
     )
     .unwrap();
 }

@@ -1,7 +1,7 @@
 use clap::Parser;
 use indicatif::ProgressIterator;
 use musk::{
-    io::{dump_data_to_file, load_data_from_file},
+    io::{create_output_file, dump_data_to_file, load_data_from_file},
     rle::{NaiveRunLengthEncoding, RunLengthEncoding},
     tracing::start_musk_tracing_subscriber,
 };
@@ -24,7 +24,7 @@ struct Args {
 
     #[arg()]
     /// Location to output the serialzed bitmaps
-    output_file: String,
+    output_location: String,
 }
 
 fn main() {
@@ -32,8 +32,10 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let output_path = Path::new(&args.output_file);
+    let output_loc_path = Path::new(&args.output_location);
     let subset_bitmaps_path = Path::new(&args.subset_bitmaps);
+
+    let mut output_file = create_output_file(output_loc_path, "musk.subset.rle");
 
     let (subset_kmers, subset_bitmaps) = load_data_from_file::<(
         HashSet<u32>,
@@ -58,7 +60,7 @@ fn main() {
     compressed_database.sort_by_key(|(kmer, _rle)| *kmer);
     dump_data_to_file(
         bincode::serialize(&compressed_database).unwrap(),
-        output_path,
+        &mut output_file,
     )
     .unwrap();
 }

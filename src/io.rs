@@ -6,7 +6,19 @@ use std::io::Read;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::{io, vec};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
+
+pub fn create_output_file(path: &Path, extension: &str) -> File {
+    let file_path = if path.is_dir() {
+        path.join(extension)
+    } else {
+        path.with_extension(extension)
+    };
+
+    info!("creating file {:?}", file_path);
+
+    File::create(file_path).expect("could not create output file")
+}
 
 pub fn split_string_to_taxid(line: String) -> Result<(String, usize), String> {
     let split_line = line.split("\t").collect::<Vec<&str>>();
@@ -64,9 +76,8 @@ pub fn load_string2taxid(string2taxid: &Path) -> Vec<(String, usize)> {
         .collect_vec()
 }
 
-pub fn dump_data_to_file(data: Vec<u8>, file: &Path) -> io::Result<()> {
-    let mut f = File::create(file).expect(&*format!("could not create file {:?}", file));
-    f.write_all(&*data)
+pub fn dump_data_to_file(data: Vec<u8>, file: &mut File) -> io::Result<()> {
+    file.write_all(&*data)
 }
 
 pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {

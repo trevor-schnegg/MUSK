@@ -23,7 +23,7 @@ pub struct Database {
     file2taxid: Vec<(String, usize)>,
     kmer_len: usize,
     kmer_runs: Vec<RunLengthEncoding>,
-    num_queries: u64,
+    n_queries: u64,
     p_values: Vec<f64>,
     significant_hits: Vec<u64>,
 }
@@ -90,7 +90,7 @@ impl Database {
             file2taxid,
             kmer_len,
             kmer_runs,
-            num_queries,
+            n_queries: num_queries,
             p_values,
             significant_hits,
         }
@@ -123,7 +123,7 @@ impl Database {
         let significant_hits = p_values
             .par_iter()
             .map(|p| {
-                Binomial::new(*p, self.num_queries)
+                Binomial::new(*p, self.n_queries)
                     .unwrap()
                     .inverse_cdf(cutoff_threshold)
             })
@@ -157,7 +157,7 @@ impl Database {
                 .enumerate()
                 .filter_map(|(index, hit_count)| {
                     let hit_count = ((hit_count as f64 / query_count as f64)
-                        * self.num_queries as f64)
+                        * self.n_queries as f64)
                         .round() as u64;
 
                     // Only compute if the number of hits is more than significant

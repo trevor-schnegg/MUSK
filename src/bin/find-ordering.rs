@@ -1,10 +1,10 @@
 use clap::Parser;
 use musk::{
-    io::load_data_from_file,
+    io::{create_output_file, load_data_from_file},
     tracing::start_musk_tracing_subscriber,
     utility::{average_hamming_distance, greedy_ordering},
 };
-use std::{fs::File, io::Write, path::Path};
+use std::{io::Write, path::Path};
 use tracing::{debug, info};
 
 /// Creates an ordering of files based on a pairwise distance matrix
@@ -14,8 +14,10 @@ use tracing::{debug, info};
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Directory to output the file2taxid file
-    output_directory: String,
+    /// The location of the output
+    /// If a file, an extension is added
+    /// If a directory, the normal extension is the file name
+    output_location: String,
 
     #[arg(short, long, default_value_t = 0)]
     /// Start index of the naive shortest path traversal
@@ -33,10 +35,29 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let distances_file = Path::new(&args.distances);
-    let output_dir_path = Path::new(&args.output_directory);
+    let output_loc_path = Path::new(&args.output_location);
 
-    let mut output_file = File::create(output_dir_path.join("musk.ordered.file2taxid"))
-        .expect("could not create output file");
+    // If canonical was used for the distances, store this
+    let canonical = if distances_file
+        .file_name()
+        .expect("provided distances is not a file")
+        .to_str()
+        .unwrap()
+        .contains(".c.")
+    {
+        true
+    } else {
+        false
+    };
+
+    info!("canonical k-mers used for distances: {}", canonical);
+
+    // If canonical, carry the file extension to the next output
+    let mut output_file = if canonical {
+        create_output_file(output_loc_path, "musk.o.c.f2t")
+    } else {
+        create_output_file(output_loc_path, "musk.o.f2t")
+    };
 
     info!("loading distances at {}", args.distances);
 

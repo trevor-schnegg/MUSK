@@ -1,13 +1,12 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use musk::explore::connected_components;
-use musk::io::load_string2taxid;
+use musk::io::{create_output_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::collections::HashMap;
-use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
@@ -27,8 +26,10 @@ struct Args {
     kmer_length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Name of the output file
-    output_file: String,
+    /// The location of the output
+    /// If a file, an extension is added
+    /// If a directory, the normal extension is the file name
+    output_location: String,
 
     #[arg()]
     /// the file2taxid file
@@ -47,15 +48,19 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
+    let canonical = args.canonical;
     let file2taxid_path = Path::new(&args.file2taxid);
-    let output_dir_path = Path::new(&args.output_file);
-    let reference_dir_path = Path::new(&args.reference_directory);
+    let kmer_len = args.kmer_length;
+    let output_loc_path = Path::new(&args.output_location);
+    let ref_dir_path = Path::new(&args.reference_directory);
+
+    info!("use canonical k-mers: {}", canonical);
 
     // Create the output file
     let mut output_file = if args.canonical {
-        File::create(output_dir_path.join(".musk.g.c.f2t")).expect("could not create output file")
+        create_output_file(output_loc_path, "musk.g.c.f2t")
     } else {
-        File::create(output_dir_path.join(".musk.g.f2t")).expect("could not create output file")
+        create_output_file(output_loc_path, "musk.g.f2t")
     };
 
     info!("loading file2taxid at {}", args.file2taxid);
@@ -90,14 +95,14 @@ fn main() {
 
         let file_paths = files
             .par_iter()
-            .map(|file| reference_dir_path.join(file))
+            .map(|file| ref_dir_path.join(file))
             .collect::<Vec<PathBuf>>();
 
         // Create a bitmap for each file
         let bitmaps = file_paths
             .into_par_iter()
             .progress()
-            .map(|file| create_bitmap(vec![file], args.kmer_length, args.canonical))
+            .map(|file| create_bitmap(vec![file], kmer_len, canonical))
             .collect::<Vec<RoaringBitmap>>();
 
         debug!("bitmaps created! performing comparisons...");

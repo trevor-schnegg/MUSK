@@ -1,12 +1,11 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
-use musk::io::{dump_data_to_file, load_string2taxid};
+use musk::io::{create_output_file, dump_data_to_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
-use std::fs::File;
 use std::path::Path;
 use tracing::info;
 
@@ -15,10 +14,6 @@ use tracing::info;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Name of the output file
-    output_file: String,
-
     #[arg(short, long, action)]
     /// Flag that specifies whether or not to use canonical kmers
     canonical: bool,
@@ -26,6 +21,12 @@ struct Args {
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
+
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
+    /// The location of the output
+    /// If a file, an extension is added
+    /// If a directory, the normal extension is the file name
+    output_location: String,
 
     #[arg()]
     /// the file2taxid file
@@ -43,11 +44,32 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let file2taxid_path = Path::new(&args.file2taxid);
-    let output_file_path = Path::new(&args.output_file);
-    let reference_dir_path = Path::new(&args.reference_directory);
+    let kmer_len = args.kmer_length;
+    let output_loc_path = Path::new(&args.output_location);
+    let ref_dir_path = Path::new(&args.reference_directory);
 
-    // Create the output file so it errors if an incorrect output file is provided before computation
-    File::create(output_file_path.join(".musk.pd")).expect("could not create output file");
+    // If the file2taxid is grouped and canonical was used, override command line to use canonical
+    // Otherwise, use the argument from the command line
+    let canonical = if file2taxid_path
+        .file_name()
+        .expect("provided file2taxid is not a file")
+        .to_str()
+        .unwrap()
+        .contains(".c.")
+    {
+        true
+    } else {
+        args.canonical
+    };
+
+    info!("use canonical k-mers: {}", canonical);
+
+    // Create the output file
+    let mut output_file = if canonical {
+        create_output_file(output_loc_path, "musk.c.pd")
+    } else {
+        create_output_file(output_loc_path, "musk.pd")
+    };
 
     info!("loading files2taxid at {}", args.file2taxid);
 
@@ -64,10 +86,10 @@ fn main() {
         .map(|(files, _taxid)| {
             let file_paths = files
                 .split("$")
-                .map(|file| reference_dir_path.join(file))
+                .map(|file| ref_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(file_paths, args.kmer_length, args.canonical)
+            create_bitmap(file_paths, kmer_len, canonical)
         })
         .collect::<Vec<RoaringBitmap>>();
 
@@ -98,7 +120,7 @@ fn main() {
 
     dump_data_to_file(
         bincode::serialize(&(distances, file2taxid)).unwrap(),
-        &output_file_path.join(".musk.pd"),
+        &mut output_file,
     )
     .unwrap();
 
