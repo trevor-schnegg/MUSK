@@ -96,7 +96,7 @@ impl Database {
         }
     }
 
-    pub fn lossy_compression(&mut self, _num_ones: usize) -> () {
+    pub fn lossy_compression(&mut self, _compression_level: usize) -> () {
         // Modify the kmer_runs variable in any desired way
 
         // Recompute the p_values and significant hits after

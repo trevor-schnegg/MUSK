@@ -7,6 +7,7 @@ use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
+use std::cmp::min;
 use std::ops::Neg;
 use std::path::Path;
 use tracing::info;
@@ -19,6 +20,11 @@ struct Args {
     #[arg(short, long, action)]
     /// Flag that specifies whether or not to use canonical kmers
     canonical: bool,
+
+    #[arg(short, long)]
+    /// Level of compression. If not supplied no lossy compression is used.
+    /// Otherwise, 1 for minimal, 2 for medium, and 3 for heavy compression
+    compression_level: Option<usize>,
 
     #[arg(short, long, default_value_t = 18)]
     /// The exponent e for the significance of hits
@@ -38,10 +44,6 @@ struct Args {
     #[arg(short, long, default_value_t = 150)]
     /// Number of queries to sample
     query_number: u64,
-
-    #[arg(short, long)]
-    /// Remove runs with count of ones <= to the input number
-    remove_runs: Option<usize>,
 
     #[arg()]
     /// The ordered file2taxid of the sequences
@@ -64,7 +66,7 @@ fn main() {
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_loc_path = Path::new(&args.output_location);
     let ref_dir_path = Path::new(&args.reference_directory);
-    let remove_runs = args.remove_runs;
+    let compresssion_level = args.compression_level;
 
     // If canonical was used for the file2taxid, override command line to use canonical
     // Otherwise, use the argument from the command line
@@ -112,10 +114,12 @@ fn main() {
         n_queries,
     );
 
-    match remove_runs {
+    match compresssion_level {
         None => {}
-        Some(num_ones) => {
-            database.lossy_compression(num_ones);
+        Some(compression_level) => {
+            if compression_level >= 1 {
+                database.lossy_compression(min(compression_level, 3));
+            }
         }
     }
 
