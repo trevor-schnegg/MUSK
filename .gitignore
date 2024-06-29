@@ -5,6 +5,7 @@ target/
 
 subset_rle.out
 subset_rle_old.out
+subset_rle.canonical.out
 subset-test-out.txt
 
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
