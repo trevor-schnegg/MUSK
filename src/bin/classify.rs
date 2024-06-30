@@ -3,7 +3,7 @@ use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::get_fasta_iter_of_file;
+use musk::utility::get_fastq_iter_of_file;
 use std::io::Write;
 use std::ops::Neg;
 use std::path::Path;
@@ -70,7 +70,7 @@ fn main() {
 
     info!("database loaded! classifying reads...");
 
-    let mut read_iter = get_fasta_iter_of_file(reads_path);
+    let mut read_iter = get_fastq_iter_of_file(reads_path);
 
     let (sender, receiver) = mpsc::channel();
     let pool = ThreadPool::new(args.thread_num);

@@ -1,8 +1,8 @@
-use bio::io::fasta;
+use bio::io::{fasta, fastq};
 use clap::Parser;
+use musk::io::create_output_file;
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{get_fasta_iter_of_file, get_fastq_iter_of_file};
-use std::fs::File;
 use std::path::Path;
 use tracing::info;
 
@@ -20,8 +20,10 @@ struct Args {
     length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Directory to output the chopped reads
-    output_directory: String,
+    /// The location of the output
+    /// If a file, an extension is added
+    /// If a directory, the normal extension is the file name
+    output_location: String,
 
     #[arg()]
     /// Fasta reads file to chop
@@ -34,13 +36,13 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let output_dir_path = Path::new(&args.output_directory);
+    let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
 
-    let file = File::create(output_dir_path.join("chopped_reads.fasta")).unwrap();
-    let mut writer = fasta::Writer::new(file);
-
     if args.fasta {
+        let output_file = create_output_file(output_loc_path, "chopped_reads.fasta");
+        let mut writer = fasta::Writer::new(output_file);
+
         let mut fasta_reads_iter = get_fasta_iter_of_file(reads_path);
 
         while let Some(Ok(read)) = fasta_reads_iter.next() {
@@ -49,18 +51,21 @@ fn main() {
             } else {
                 &read.seq()[..args.length]
             };
-            writer.write(read.id(), None, seq).unwrap();
+            writer.write(read.id(), read.desc(), seq).unwrap();
         }
     } else {
+        let output_file = create_output_file(output_loc_path, "chopped_reads.fastq");
+        let mut writer = fastq::Writer::new(output_file);
+
         let mut fastq_reads_iter = get_fastq_iter_of_file(reads_path);
 
         while let Some(Ok(read)) = fastq_reads_iter.next() {
-            let seq = if read.seq().len() < 180 {
-                read.seq()
+            let (seq, qual) = if read.seq().len() < 180 {
+                (read.seq(), read.qual())
             } else {
-                &read.seq()[..args.length]
+                (&read.seq()[..args.length], &read.qual()[..args.length])
             };
-            writer.write(read.id(), None, seq).unwrap();
+            writer.write(read.id(), read.desc(), seq, qual).unwrap();
         }
     }
 
