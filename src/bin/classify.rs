@@ -1,9 +1,8 @@
 use clap::Parser;
 use musk::database::Database;
-use musk::io::load_data_from_file;
+use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fasta_iter_of_file;
-use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
@@ -26,8 +25,10 @@ struct Args {
     kmer_length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Directory to output the read2taxid
-    output_directory: String,
+    /// The location of the output
+    /// If a file, an extension is added
+    /// If a directory, the normal extension is the file name
+    output_location: String,
 
     #[arg(short, long, default_value_t = 12)]
     /// Number of threads to use in classification
@@ -49,11 +50,10 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let database_path = Path::new(&args.database);
-    let output_dir_path = Path::new(&args.output_directory);
+    let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
 
-    let mut output_file =
-        File::create(output_dir_path.join("readid2taxid")).expect("could not create output file");
+    let mut output_file = create_output_file(output_loc_path, "musk.r2t");
 
     info!("loading database at {:?}", database_path);
 
