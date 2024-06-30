@@ -1,9 +1,11 @@
 use clap::Parser;
+use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fasta_iter_of_file;
 use std::io::Write;
+use std::ops::Neg;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
 use threadpool::ThreadPool;
@@ -19,6 +21,12 @@ struct Args {
     /// If canonical kmers are used, each read will only be queried once
     /// Otherwise, the forward and reverse complement will be queried
     canonical: bool,
+
+    #[arg(short, long, default_value_t = 18)]
+    /// The exponent e for the significance of hits
+    /// Used in the equation 10^{-e} to determine statistical significance
+    /// MUST be lower than the cutoff provided for database construction
+    cutoff_threshold_exp: i32,
 
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer in the database
@@ -49,6 +57,7 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
+    let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.cutoff_threshold_exp).neg()));
     let database_path = Path::new(&args.database);
     let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
@@ -75,7 +84,7 @@ fn main() {
             sender_clone
                 .send((
                     read.id().to_string(),
-                    database_arc_clone.classify(read.seq()),
+                    database_arc_clone.classify(read.seq(), cutoff_threshold),
                 ))
                 .unwrap();
         })

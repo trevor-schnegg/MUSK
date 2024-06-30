@@ -4,7 +4,6 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
-use std::time::Instant;
 use tracing::{debug, info};
 
 use crate::{
@@ -133,24 +132,21 @@ impl Database {
         self.significant_hits = significant_hits;
     }
 
-    pub fn classify(&self, read: &[u8]) -> usize {
+    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> usize {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Collect the hits from the read
         let mut query_count = 0;
-        let queries_start = Instant::now();
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
             query_count += 1;
             for sequence in self.kmer_runs[kmer].iter() {
                 collected_hits[sequence] += 1;
             }
         }
-        debug!("time elapsed for queries: {:?}", queries_start.elapsed());
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        let classificaiton_start = Instant::now();
         for (index, probability) in
             collected_hits
                 .into_iter()
@@ -187,12 +183,8 @@ impl Database {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
         }
-        debug!(
-            "time elapsed for classification: {:?}",
-            classificaiton_start.elapsed()
-        );
 
-        if lowest_prob < self.cutoff_threshold {
+        if lowest_prob < cutoff_threshold {
             self.file2taxid[lowest_prob_index].1
         } else {
             0
