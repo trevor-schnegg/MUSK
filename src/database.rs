@@ -272,8 +272,8 @@ impl Database {
                         .round() as u64;
 
                     debug!(
-                        "{}/{} into {}/150",
-                        overall_hit_count, query_count, hit_count
+                        "{}/{} into {}/{}",
+                        overall_hit_count, query_count, hit_count, self.n_queries
                     );
 
                     // Only compute if the number of hits is more than significant
