@@ -208,10 +208,10 @@ impl Database {
             }
 
             compressed_encoding.push(RunLengthEncoding::new(compressed_runs));
-       }
+        }
 
-       // update kmer_runs
-       self.kmer_runs = compressed_encoding;
+        // update kmer_runs
+        self.kmer_runs = compressed_encoding;
 
         // Recompute the p_values and significant hits after
         self.recompute_statistics();
@@ -271,11 +271,6 @@ impl Database {
                         * self.n_queries as f64)
                         .round() as u64;
 
-                    debug!(
-                        "{}/{} into {}/{}",
-                        overall_hit_count, query_count, hit_count, self.n_queries
-                    );
-
                     // Only compute if the number of hits is more than significant
                     if hit_count > self.significant_hits[index] {
                         let p = self.p_values[index];
@@ -298,7 +293,7 @@ impl Database {
                 })
         {
             // For each index that we computed, compare to find the lowest probability
-            // If, for whatever reason, the probabilities are the same, this will use the first one
+            // If, for whatever reason, two probabilities are the same, this will use the first one
             if probability < lowest_prob {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }

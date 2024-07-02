@@ -26,7 +26,7 @@ struct Args {
     /// Otherwise, 1 for minimal, 2 for medium, and 3 for heavy compression
     compression_level: Option<usize>,
 
-    #[arg(short, long, default_value_t = 18)]
+    #[arg(short, long, default_value_t = 12)]
     /// The exponent e for the significance of hits
     /// Used in the equation 10^{-e} to determine statistical significance
     cutoff_threshold_exp: i32,
