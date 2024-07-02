@@ -139,6 +139,12 @@ impl RunLengthEncoding {
         RunLengthEncodingIter::from_runs(&self.runs)
     }
 
+    pub fn new(runs: Vec<u16>) -> RunLengthEncoding {
+        RunLengthEncoding {
+            runs
+        }
+    }
+
     fn compress_from(runs: Vec<u16>) -> Self {
         // The compressed vector that composes the new run length encoding
         let mut compressed_runs = vec![];

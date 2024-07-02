@@ -1,4 +1,5 @@
 use indicatif::ProgressIterator;
+use itertools::Itertools;
 use num_traits::One;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -11,7 +12,7 @@ use crate::{
     binomial_sf::sf,
     consts::Consts,
     kmer_iter::KmerIter,
-    rle::{NaiveRunLengthEncoding, RunLengthEncoding},
+    rle::{NaiveRunLengthEncoding, RunLengthEncoding, Run},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -95,8 +96,122 @@ impl Database {
         }
     }
 
-    pub fn lossy_compression(&mut self, _compression_level: usize) -> () {
-        // Modify the kmer_runs variable in any desired way
+    pub fn lossy_compression(&mut self, compression_level: usize) -> () {
+        let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
+        
+        fn can_compress(comp_level: usize, set_bits: usize, comp_gain: usize) -> bool {
+            if comp_gain < 1 {
+                false
+            } else {
+                match comp_level {
+                    1 => {
+                        set_bits == 1 && comp_gain == 2
+                    }
+                    2 => {
+                        set_bits == 1 || set_bits == 2 && comp_gain == 2
+                    }
+                    3 => {
+                        set_bits == 1 || set_bits == 2 || set_bits <= 4 && comp_gain == 2
+                    }
+                    _ => {
+                        false
+                    }
+                }
+            }
+        }
+        
+        for encoding in self.kmer_runs.iter() {
+            let runs = encoding
+                .get_raw_runs()
+                .into_iter()
+                .map(|run| Run::from_u16(*run))
+                .collect_vec();
+
+            let mut compressed_runs: Vec<u16> = vec![];
+            let mut skip_iter = false;
+
+            let max_encoded_value = (1 <<14) - 1;
+
+            for (i, curr) in runs.iter().enumerate() {
+                if skip_iter {
+                    skip_iter = false;
+                    continue;
+                }
+
+                match curr {
+                    Run::Uncompressed(bits) => {
+                        let set_bits = bits.count_ones() as usize;
+                        let mut tot_merged_bits: u16 = 15;
+
+                        // determine whether neighbors can incorporate this unencoded block
+                        let merge_prev = {
+                            if i > 0 {
+                                match Run::from_u16(compressed_runs[compressed_runs.len() - 1]) {
+                                    Run::Zeros(count) => {
+                                        if tot_merged_bits + count <= max_encoded_value {
+                                            tot_merged_bits += count;
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    _ => false
+                                }
+                            } else {
+                                false
+                            }
+                        };
+
+                        let merge_next = {
+                            if i < runs.len() - 1 {
+                                match runs[i + 1] {
+                                    Run::Zeros(count) => {
+                                        if tot_merged_bits + count <= max_encoded_value {
+                                            tot_merged_bits += count;
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    _ => false
+                                }
+                            } else {
+                                false
+                            }
+                        };
+
+                        let comp_gain: usize = match (merge_prev, merge_next) {
+                            (false, false) => 0,
+                            (true, false) | (false, true) => 1,
+                            (true, true) => 2
+                        };
+
+                        // test whether merge should be completed
+                        if can_compress(compression_level, set_bits, comp_gain) {
+                            skip_iter = merge_next;
+                            if merge_prev {
+                                let target_index = compressed_runs.len() - 1;
+                                compressed_runs[target_index] = tot_merged_bits;
+                            } else if merge_next {
+                                compressed_runs.push(tot_merged_bits);
+                            } else {
+                                panic!("compression attempted when not possible");
+                            }
+                        } else {
+                            compressed_runs.push(Run::to_u16(curr));
+                        }
+                    }
+                    _ => {
+                        compressed_runs.push(Run::to_u16(curr));
+                    }
+                }
+            }
+
+            compressed_encoding.push(RunLengthEncoding::new(compressed_runs));
+       }
+
+       // update kmer_runs
+       self.kmer_runs = compressed_encoding;
 
         // Recompute the p_values and significant hits after
         self.recompute_statistics();
