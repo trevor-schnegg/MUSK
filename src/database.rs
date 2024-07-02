@@ -266,10 +266,15 @@ impl Database {
             collected_hits
                 .into_iter()
                 .enumerate()
-                .filter_map(|(index, hit_count)| {
-                    let hit_count = ((hit_count as f64 / query_count as f64)
+                .filter_map(|(index, overall_hit_count)| {
+                    let hit_count = ((overall_hit_count as f64 / query_count as f64)
                         * self.n_queries as f64)
                         .round() as u64;
+
+                    debug!(
+                        "{}/{} into {}/150",
+                        overall_hit_count, query_count, hit_count
+                    );
 
                     // Only compute if the number of hits is more than significant
                     if hit_count > self.significant_hits[index] {
