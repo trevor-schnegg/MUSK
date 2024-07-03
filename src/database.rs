@@ -12,7 +12,7 @@ use crate::{
     binomial_sf::sf,
     consts::Consts,
     kmer_iter::KmerIter,
-    rle::{NaiveRunLengthEncoding, RunLengthEncoding, Run},
+    rle::{NaiveRunLengthEncoding, Run, RunLengthEncoding},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -98,28 +98,20 @@ impl Database {
 
     pub fn lossy_compression(&mut self, compression_level: usize) -> () {
         let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
-        
+
         fn can_compress(comp_level: usize, set_bits: usize, comp_gain: usize) -> bool {
             if comp_gain < 1 {
                 false
             } else {
                 match comp_level {
-                    1 => {
-                        set_bits == 1 && comp_gain == 2
-                    }
-                    2 => {
-                        set_bits == 1 || set_bits == 2 && comp_gain == 2
-                    }
-                    3 => {
-                        set_bits == 1 || set_bits == 2 || set_bits <= 4 && comp_gain == 2
-                    }
-                    _ => {
-                        false
-                    }
+                    1 => set_bits == 1 && comp_gain == 2,
+                    2 => set_bits == 1 || set_bits == 2 && comp_gain == 2,
+                    3 => set_bits == 1 || set_bits == 2 || set_bits <= 4 && comp_gain == 2,
+                    _ => false,
                 }
             }
         }
-        
+
         for encoding in self.kmer_runs.iter() {
             let runs = encoding
                 .get_raw_runs()
@@ -130,7 +122,7 @@ impl Database {
             let mut compressed_runs: Vec<u16> = vec![];
             let mut skip_iter = false;
 
-            let max_encoded_value = (1 <<14) - 1;
+            let max_encoded_value = (1 << 14) - 1;
 
             for (i, curr) in runs.iter().enumerate() {
                 if skip_iter {
@@ -155,7 +147,7 @@ impl Database {
                                             false
                                         }
                                     }
-                                    _ => false
+                                    _ => false,
                                 }
                             } else {
                                 false
@@ -173,7 +165,7 @@ impl Database {
                                             false
                                         }
                                     }
-                                    _ => false
+                                    _ => false,
                                 }
                             } else {
                                 false
@@ -183,7 +175,7 @@ impl Database {
                         let comp_gain: usize = match (merge_prev, merge_next) {
                             (false, false) => 0,
                             (true, false) | (false, true) => 1,
-                            (true, true) => 2
+                            (true, true) => 2,
                         };
 
                         // test whether merge should be completed
@@ -250,6 +242,8 @@ impl Database {
     pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> usize {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
+        let mut checkpoint_hits = vec![0_u64; self.file2taxid.len()];
+
         // Collect the hits from the read
         let mut query_count = 0;
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
@@ -257,47 +251,56 @@ impl Database {
             for sequence in self.kmer_runs[kmer].iter() {
                 collected_hits[sequence] += 1;
             }
+            if query_count == self.n_queries {
+                checkpoint_hits = collected_hits.clone();
+            }
         }
+
+        let mut lowest_prob_adjusted_hit_count = 0;
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        for (index, probability) in
-            collected_hits
-                .into_iter()
-                .enumerate()
-                .filter_map(|(index, overall_hit_count)| {
-                    let hit_count = ((overall_hit_count as f64 / query_count as f64)
-                        * self.n_queries as f64)
-                        .round() as u64;
+        for (index, probability, adjusted_hit_count) in collected_hits
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, overall_hit_count)| {
+                let hit_count = ((overall_hit_count as f64 / query_count as f64)
+                    * self.n_queries as f64)
+                    .round() as u64;
 
-                    // Only compute if the number of hits is more than significant
-                    if hit_count > self.significant_hits[index] {
-                        let p = self.p_values[index];
-                        let n = query_count;
-                        let x = hit_count;
-                        // Perform the computation using f64
-                        let prob = Binomial::new(p, n).unwrap().sf(x);
-                        // If the probability is greater than 0.0, use it
-                        let big_exp_float_prob = if prob > 0.0 {
-                            BigExpFloat::from_f64(prob)
-                        } else {
-                            // Otherwise, compute the probability using higher precision
-                            sf(p, n, x, &self.consts)
-                        };
-                        Some((index, big_exp_float_prob))
+                // Only compute if the number of hits is more than significant
+                if hit_count > self.significant_hits[index] {
+                    let p = self.p_values[index];
+                    let n = query_count;
+                    let x = hit_count;
+                    // Perform the computation using f64
+                    let prob = Binomial::new(p, n).unwrap().sf(x);
+                    // If the probability is greater than 0.0, use it
+                    let big_exp_float_prob = if prob > 0.0 {
+                        BigExpFloat::from_f64(prob)
                     } else {
-                        // If there were 0 hits, don't compute
-                        None
-                    }
-                })
+                        // Otherwise, compute the probability using higher precision
+                        sf(p, n, x, &self.consts)
+                    };
+                    Some((index, big_exp_float_prob, hit_count))
+                } else {
+                    // If there were 0 hits, don't compute
+                    None
+                }
+            })
         {
             // For each index that we computed, compare to find the lowest probability
             // If, for whatever reason, two probabilities are the same, this will use the first one
             if probability < lowest_prob {
                 (lowest_prob_index, lowest_prob) = (index, probability);
+                lowest_prob_adjusted_hit_count = adjusted_hit_count;
             }
         }
+        println!(
+            "{}\t{}",
+            checkpoint_hits[lowest_prob_index], lowest_prob_adjusted_hit_count
+        );
 
         if lowest_prob < cutoff_threshold {
             self.file2taxid[lowest_prob_index].1

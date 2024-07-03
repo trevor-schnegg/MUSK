@@ -140,9 +140,7 @@ impl RunLengthEncoding {
     }
 
     pub fn new(runs: Vec<u16>) -> RunLengthEncoding {
-        RunLengthEncoding {
-            runs
-        }
+        RunLengthEncoding { runs }
     }
 
     fn compress_from(runs: Vec<u16>) -> Self {
