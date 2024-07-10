@@ -26,7 +26,7 @@ struct Args {
     /// The exponent e for the significance of hits
     /// Used in the equation 10^{-e} to determine statistical significance
     /// MUST be lower than the cutoff provided for database construction
-    cutoff_threshold_exp: i32,
+    exp_cutoff: i32,
 
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer in the database
@@ -57,7 +57,7 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.cutoff_threshold_exp).neg()));
+    let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.exp_cutoff).neg()));
     let database_path = Path::new(&args.database);
     let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
