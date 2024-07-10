@@ -1,5 +1,3 @@
-use std::cmp::max;
-
 use indicatif::ProgressIterator;
 use itertools::Itertools;
 use num_traits::One;
@@ -242,55 +240,43 @@ impl Database {
     }
 
     pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> usize {
-        let mut max_hits = vec![0_u64; self.file2taxid.len()];
-        let mut curr_hits = vec![0_u64; self.file2taxid.len()];
+        let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
-        // Find the maximum hits for the window size
-        let read_kmers = KmerIter::from(read, self.kmer_len, self.canonical).collect_vec();
-        let mut total_query_count = 0_u64;
-        for kmer in read_kmers.iter() {
-            for sequence in self.kmer_runs[*kmer].iter() {
-                let curr_hits_for_seq = &mut curr_hits[sequence];
-                *curr_hits_for_seq += 1;
-                max_hits[sequence] = max(*curr_hits_for_seq, max_hits[sequence]);
-            }
-
-            total_query_count += 1;
-
-            if total_query_count >= self.n_queries {
-                for sequence in
-                    self.kmer_runs[read_kmers[(total_query_count - self.n_queries) as usize]].iter()
-                {
-                    curr_hits[sequence] -= 1;
-                }
+        // Find the hits for all kmers
+        let mut max_kmer_index = 0;
+        for (index, kmer) in KmerIter::from(read, self.kmer_len, self.canonical).enumerate() {
+            for sequence in self.kmer_runs[kmer].iter() {
+                collected_hits[sequence] += 1;
+                max_kmer_index = index;
             }
         }
 
+        let n_total = (max_kmer_index + 1) as f64;
+
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
-        let n = if total_query_count < self.n_queries {
-            total_query_count
-        } else {
-            self.n_queries
-        };
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        for (index, probability) in max_hits
+        for (index, probability) in collected_hits
             .into_iter()
             .zip(self.p_values.iter())
             .enumerate()
-            .filter_map(|(index, (max_hit_count, p))| {
+            .filter_map(|(index, (hit_count, p))| {
+                let x = (hit_count as f64 / n_total) * self.n_queries as f64;
+                let n = self.n_queries;
+
                 // Only compute if the number of hits is more than significant
-                if max_hit_count > (n as f64 * p).round() as u64 {
+                if x > (n as f64 * p) {
+                    let x = x.round() as u64;
                     // Perform the computation using f64
-                    let prob = Binomial::new(*p, n).unwrap().sf(max_hit_count);
+                    let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
                     // If the probability is greater than 0.0, use it
-                    let big_exp_float_prob = if prob > 0.0 {
-                        BigExpFloat::from_f64(prob)
+                    let prob_big_exp = if prob_f64 > 0.0 {
+                        BigExpFloat::from_f64(prob_f64)
                     } else {
-                        // Otherwise, compute the probability using higher precision
-                        sf(*p, n, max_hit_count, &self.consts)
+                        // Otherwise, compute the probability using big exp
+                        sf(*p, n, x, &self.consts)
                     };
-                    Some((index, big_exp_float_prob))
+                    Some((index, prob_big_exp))
                 } else {
                     // If there were less than a significant number of hits, don't compute
                     None
