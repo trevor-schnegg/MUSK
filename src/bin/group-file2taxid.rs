@@ -40,7 +40,7 @@ struct Args {
     reference_directory: String,
 }
 
-const MIN_SIMILARITY: f64 = 0.9;
+const MIN_SIMILARITY: f64 = 0.95;
 
 fn main() {
     // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
