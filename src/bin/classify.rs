@@ -22,7 +22,7 @@ struct Args {
     /// Otherwise, the forward and reverse complement will be queried
     canonical: bool,
 
-    #[arg(short, long, default_value_t = 18)]
+    #[arg(short, long, default_value_t = 9)]
     /// The exponent e for the significance of hits
     /// Used in the equation 10^{-e} to determine statistical significance
     /// MUST be lower than the cutoff provided for database construction
