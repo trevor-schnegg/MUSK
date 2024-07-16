@@ -105,15 +105,30 @@ fn main() {
 
     for (read, (full_read_taxid, full_read_hits), beginning) in receiver {
         // Print the classification to a file
-        output_file
-            .write(
-                format!(
-                    "{}\t{}\t{}\t{:?}\n",
-                    read, full_read_taxid, full_read_hits, beginning
-                )
-                .as_bytes(),
-            )
-            .expect("could not write to output file");
+        match beginning {
+            None => {
+                output_file
+                    .write(
+                        format!(
+                            "{}\t{}\t{}\tNone\tNone\n",
+                            read, full_read_taxid, full_read_hits
+                        )
+                        .as_bytes(),
+                    )
+                    .expect("could not write to output file");
+            }
+            Some((beginning_taxid, beginning_hits)) => {
+                output_file
+                    .write(
+                        format!(
+                            "{}\t{}\t{}\t{}\t{}\n",
+                            read, full_read_taxid, full_read_hits, beginning_taxid, beginning_hits
+                        )
+                        .as_bytes(),
+                    )
+                    .expect("could not write to output file");
+            }
+        }
     }
 
     info!("done!");
