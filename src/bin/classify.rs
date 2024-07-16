@@ -81,21 +81,38 @@ fn main() {
         let database_arc_clone = database_arc.clone();
 
         pool.execute(move || {
-            sender_clone
-                .send((
-                    read.id().to_string(),
-                    database_arc_clone.classify(read.seq(), cutoff_threshold),
-                ))
-                .unwrap();
+            if read.seq().len() <= 180 {
+                sender_clone
+                    .send((
+                        read.id().to_string(),
+                        database_arc_clone.classify(read.seq(), cutoff_threshold),
+                        None,
+                    ))
+                    .unwrap();
+            } else {
+                sender_clone
+                    .send((
+                        read.id().to_string(),
+                        database_arc_clone.classify(read.seq(), cutoff_threshold),
+                        Some(database_arc_clone.classify(&read.seq()[..180], cutoff_threshold)),
+                    ))
+                    .unwrap();
+            }
         })
     }
 
     drop(sender);
 
-    for (read, taxid) in receiver {
+    for (read, (full_read_taxid, full_read_hits), beginning) in receiver {
         // Print the classification to a file
         output_file
-            .write(format!("{}\t{}\n", read, taxid).as_bytes())
+            .write(
+                format!(
+                    "{}\t{}\t{}\t{:?}\n",
+                    read, full_read_taxid, full_read_hits, beginning
+                )
+                .as_bytes(),
+            )
             .expect("could not write to output file");
     }
 

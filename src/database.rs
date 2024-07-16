@@ -239,7 +239,7 @@ impl Database {
         self.significant_hits = significant_hits;
     }
 
-    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> usize {
+    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> (usize, u64) {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
@@ -257,7 +257,8 @@ impl Database {
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        for (index, probability) in collected_hits
+        let mut lowest_prob_num_hits = 0;
+        for (index, probability, num_hits) in collected_hits
             .into_iter()
             .zip(self.p_values.iter())
             .enumerate()
@@ -275,7 +276,7 @@ impl Database {
                         // Otherwise, compute the probability using big exp
                         sf(*p, n, x, &self.consts)
                     };
-                    Some((index, prob_big_exp))
+                    Some((index, prob_big_exp, x))
                 } else {
                     // If there were less than a significant number of hits, don't compute
                     None
@@ -286,13 +287,14 @@ impl Database {
             // If, for whatever reason, two probabilities are the same, this will use the first one
             if probability < lowest_prob {
                 (lowest_prob_index, lowest_prob) = (index, probability);
+                lowest_prob_num_hits = num_hits;
             }
         }
 
         if lowest_prob < cutoff_threshold {
-            self.file2taxid[lowest_prob_index].1
+            (self.file2taxid[lowest_prob_index].1, lowest_prob_num_hits)
         } else {
-            0
+            (0, 0)
         }
     }
 }
