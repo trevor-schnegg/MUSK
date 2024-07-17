@@ -251,8 +251,7 @@ impl Database {
             }
         }
 
-        let n_total = (max_kmer_index + 1) as f64;
-        let n = self.n_queries;
+        let n_total = (max_kmer_index + 1) as u64;
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
@@ -263,18 +262,17 @@ impl Database {
             .zip(self.p_values.iter())
             .enumerate()
             .filter_map(|(index, (hit_count, p))| {
-                let x = (hit_count as f64 / n_total) * n as f64;
+                let x = hit_count;
                 // Only compute if the number of hits is more than significant
-                if x > (n as f64 * p) {
-                    let x = x.round() as u64;
+                if x as f64 > (n_total as f64 * p) {
                     // Perform the computation using f64
-                    let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
+                    let prob_f64 = Binomial::new(*p, n_total).unwrap().sf(x);
                     // If the probability is greater than 0.0, use it
                     let prob_big_exp = if prob_f64 > 0.0 {
                         BigExpFloat::from_f64(prob_f64)
                     } else {
                         // Otherwise, compute the probability using big exp
-                        sf(*p, n, x, &self.consts)
+                        sf(*p, n_total, x, &self.consts)
                     };
                     Some((index, prob_big_exp, x))
                 } else {
