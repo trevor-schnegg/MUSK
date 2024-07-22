@@ -81,54 +81,22 @@ fn main() {
         let database_arc_clone = database_arc.clone();
 
         pool.execute(move || {
-            if read.seq().len() <= 180 {
-                sender_clone
-                    .send((
-                        read.id().to_string(),
-                        database_arc_clone.classify(read.seq(), cutoff_threshold),
-                        None,
-                    ))
-                    .unwrap();
-            } else {
-                sender_clone
-                    .send((
-                        read.id().to_string(),
-                        database_arc_clone.classify(read.seq(), cutoff_threshold),
-                        Some(database_arc_clone.classify(&read.seq()[..180], cutoff_threshold)),
-                    ))
-                    .unwrap();
-            }
+            sender_clone
+                .send((
+                    read.id().to_string(),
+                    database_arc_clone.classify(read.seq(), cutoff_threshold),
+                ))
+                .unwrap();
         })
     }
 
     drop(sender);
 
-    for (read, (full_read_taxid, full_read_hits), beginning) in receiver {
+    for (read, taxid) in receiver {
         // Print the classification to a file
-        match beginning {
-            None => {
-                output_file
-                    .write(
-                        format!(
-                            "{}\t{}\t{}\tNone\tNone\n",
-                            read, full_read_taxid, full_read_hits
-                        )
-                        .as_bytes(),
-                    )
-                    .expect("could not write to output file");
-            }
-            Some((beginning_taxid, beginning_hits)) => {
-                output_file
-                    .write(
-                        format!(
-                            "{}\t{}\t{}\t{}\t{}\n",
-                            read, full_read_taxid, full_read_hits, beginning_taxid, beginning_hits
-                        )
-                        .as_bytes(),
-                    )
-                    .expect("could not write to output file");
-            }
-        }
+        output_file
+            .write(format!("{}\t{}\n", read, taxid).as_bytes())
+            .expect("could not write to output file");
     }
 
     info!("done!");

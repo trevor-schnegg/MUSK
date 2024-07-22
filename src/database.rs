@@ -239,7 +239,7 @@ impl Database {
         self.significant_hits = significant_hits;
     }
 
-    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> (usize, u64) {
+    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> usize {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
@@ -251,30 +251,31 @@ impl Database {
             }
         }
 
-        let n_total = (max_kmer_index + 1) as u64;
+        let n_total = (max_kmer_index + 1) as f64;
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        let mut lowest_prob_num_hits = 0;
-        for (index, probability, num_hits) in collected_hits
+        for (index, probability) in collected_hits
             .into_iter()
             .zip(self.p_values.iter())
             .enumerate()
-            .filter_map(|(index, (hit_count, p))| {
-                let x = hit_count;
+            .filter_map(|(index, (n_hits, p))| {
+                let x = (n_hits as f64 / n_total) * self.n_queries as f64;
                 // Only compute if the number of hits is more than significant
-                if x as f64 > (n_total as f64 * p) {
+                if x as f64 > (self.n_queries as f64 * p) {
                     // Perform the computation using f64
-                    let prob_f64 = Binomial::new(*p, n_total).unwrap().sf(x);
+                    let prob_f64 = Binomial::new(*p, self.n_queries)
+                        .unwrap()
+                        .sf(x.round() as u64);
                     // If the probability is greater than 0.0, use it
                     let prob_big_exp = if prob_f64 > 0.0 {
                         BigExpFloat::from_f64(prob_f64)
                     } else {
                         // Otherwise, compute the probability using big exp
-                        sf(*p, n_total, x, &self.consts)
+                        sf(*p, self.n_queries, x.round() as u64, &self.consts)
                     };
-                    Some((index, prob_big_exp, x))
+                    Some((index, prob_big_exp))
                 } else {
                     // If there were less than a significant number of hits, don't compute
                     None
@@ -285,14 +286,13 @@ impl Database {
             // If, for whatever reason, two probabilities are the same, this will use the first one
             if probability < lowest_prob {
                 (lowest_prob_index, lowest_prob) = (index, probability);
-                lowest_prob_num_hits = num_hits;
             }
         }
 
         if lowest_prob < cutoff_threshold {
-            (self.file2taxid[lowest_prob_index].1, lowest_prob_num_hits)
+            self.file2taxid[lowest_prob_index].1
         } else {
-            (0, 0)
+            0
         }
     }
 }
