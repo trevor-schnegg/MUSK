@@ -25,6 +25,10 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
+    #[arg(short, long, default_value_t = 0.95)]
+    /// The Jaccard similarity required to combine reference sequences
+    minimum_similarity: f64,
+
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
     /// The location of the output
     /// If a file, an extension is added
@@ -39,8 +43,6 @@ struct Args {
     /// Directory with fasta files to create reference from
     reference_directory: String,
 }
-
-const MIN_SIMILARITY: f64 = 0.95;
 
 fn main() {
     // Initialize the tracing subscriber to handle debug, info, warn, and error macro calls
@@ -107,7 +109,7 @@ fn main() {
 
         debug!("bitmaps created! performing comparisons...");
 
-        let connected_components = connected_components(bitmaps, MIN_SIMILARITY);
+        let connected_components = connected_components(bitmaps, args.minimum_similarity);
 
         for component in connected_components {
             let mut files_string = String::new();
