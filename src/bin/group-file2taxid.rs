@@ -57,6 +57,7 @@ fn main() {
     let ref_dir_path = Path::new(&args.reference_directory);
 
     info!("use canonical k-mers: {}", canonical);
+    info!("minimum similarity: {}", args.minimum_similarity);
 
     // Create the output file
     let mut output_file = if args.canonical {
