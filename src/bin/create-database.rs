@@ -103,7 +103,7 @@ fn main() {
         })
         .collect::<Vec<RoaringBitmap>>();
 
-    info!("raring bitmaps created! constructing database...");
+    info!("roaring bitmaps created! constructing database...");
 
     let mut database = Database::from(
         bitmaps,
