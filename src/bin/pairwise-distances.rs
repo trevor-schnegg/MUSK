@@ -93,7 +93,7 @@ fn main() {
         })
         .collect::<Vec<RoaringBitmap>>();
 
-    info!("roaring bitmaps computed, creating distance matrix...");
+    info!("roaring bitmaps created, creating distance matrix...");
 
     let distances = bitmaps
         .par_iter()
