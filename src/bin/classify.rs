@@ -28,6 +28,11 @@ struct Args {
     /// MUST be lower than the cutoff provided for database construction
     exp_cutoff: i32,
 
+    #[arg(short, long, action)]
+    /// Flag that specifies whether or not to use the whole read during classification
+    /// If not, an MLE for 150 trials is used
+    full_read: bool,
+
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer in the database
     kmer_length: usize,
@@ -84,7 +89,7 @@ fn main() {
             sender_clone
                 .send((
                     read.id().to_string(),
-                    database_arc_clone.classify(read.seq(), cutoff_threshold),
+                    database_arc_clone.classify(read.seq(), cutoff_threshold, args.full_read),
                 ))
                 .unwrap();
         })

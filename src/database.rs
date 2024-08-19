@@ -97,8 +97,15 @@ impl Database {
     }
 
     pub fn lossy_compression(&mut self, compression_level: usize) -> () {
-        let total_set_bits_before = self.kmer_runs.par_iter().map(|runs| runs.iter().count()).sum::<usize>();
-        info!("total set bits before compression {}", total_set_bits_before);
+        let total_set_bits_before = self
+            .kmer_runs
+            .par_iter()
+            .map(|runs| runs.iter().count())
+            .sum::<usize>();
+        info!(
+            "total set bits before compression {}",
+            total_set_bits_before
+        );
 
         let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
 
@@ -208,7 +215,11 @@ impl Database {
         // update kmer_runs
         self.kmer_runs = compressed_encoding;
 
-        let total_set_bits_after = self.kmer_runs.par_iter().map(|runs| runs.iter().count()).sum::<usize>();
+        let total_set_bits_after = self
+            .kmer_runs
+            .par_iter()
+            .map(|runs| runs.iter().count())
+            .sum::<usize>();
         info!("total set bits after compression {}", total_set_bits_after);
 
         // Recompute the p_values and significant hits after
@@ -245,7 +256,7 @@ impl Database {
         self.significant_hits = significant_hits;
     }
 
-    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat) -> usize {
+    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat, full_read: bool) -> usize {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
@@ -257,7 +268,7 @@ impl Database {
             }
         }
 
-        let n_total = (max_kmer_index + 1) as f64;
+        let n_total = max_kmer_index + 1;
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
@@ -267,19 +278,27 @@ impl Database {
             .zip(self.p_values.iter())
             .enumerate()
             .filter_map(|(index, (n_hits, p))| {
-                let x = (n_hits as f64 / n_total) * self.n_queries as f64;
+                let x = if full_read {
+                    n_hits as f64
+                } else {
+                    (n_hits as f64 / n_total as f64) * self.n_queries as f64
+                };
+                let n = if full_read {
+                    n_total as u64
+                } else {
+                    self.n_queries
+                };
+
                 // Only compute if the number of hits is more than significant
-                if x as f64 > (self.n_queries as f64 * p) {
+                if x > (n as f64 * p) {
                     // Perform the computation using f64
-                    let prob_f64 = Binomial::new(*p, self.n_queries)
-                        .unwrap()
-                        .sf(x.round() as u64);
+                    let prob_f64 = Binomial::new(*p, n).unwrap().sf(x.round() as u64);
                     // If the probability is greater than 0.0, use it
                     let prob_big_exp = if prob_f64 > 0.0 {
                         BigExpFloat::from_f64(prob_f64)
                     } else {
                         // Otherwise, compute the probability using big exp
-                        sf(*p, self.n_queries, x.round() as u64, &self.consts)
+                        sf(*p, n, x.round() as u64, &self.consts)
                     };
                     Some((index, prob_big_exp))
                 } else {
