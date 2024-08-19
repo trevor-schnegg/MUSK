@@ -97,6 +97,9 @@ impl Database {
     }
 
     pub fn lossy_compression(&mut self, compression_level: usize) -> () {
+        let total_set_bits_before = self.kmer_runs.par_iter().map(|runs| runs.iter().count()).sum::<usize>();
+        info!("total set bits before compression {}", total_set_bits_before);
+
         let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
 
         fn can_compress(comp_level: usize, set_bits: usize, comp_gain: usize) -> bool {
@@ -204,6 +207,9 @@ impl Database {
 
         // update kmer_runs
         self.kmer_runs = compressed_encoding;
+
+        let total_set_bits_after = self.kmer_runs.par_iter().map(|runs| runs.iter().count()).sum::<usize>();
+        info!("total set bits after compression {}", total_set_bits_after);
 
         // Recompute the p_values and significant hits after
         self.recompute_statistics();
