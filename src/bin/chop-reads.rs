@@ -16,7 +16,7 @@ struct Args {
     fasta: bool,
 
     #[arg(short, long, default_value_t = 180)]
-    /// Length to chop the read into
+    /// Maximum length of the read
     length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
@@ -37,33 +37,34 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let output_loc_path = Path::new(&args.output_location);
+    let chop_length = args.length;
     let reads_path = Path::new(&args.reads);
 
     if args.fasta {
-        let output_file = create_output_file(output_loc_path, "chopped_reads.fasta");
+        let output_file = create_output_file(output_loc_path, "chopped.fasta");
         let mut writer = fasta::Writer::new(output_file);
 
         let mut fasta_reads_iter = get_fasta_iter_of_file(reads_path);
 
         while let Some(Ok(read)) = fasta_reads_iter.next() {
-            let seq = if read.seq().len() < 180 {
+            let seq = if read.seq().len() < chop_length {
                 read.seq()
             } else {
-                &read.seq()[..args.length]
+                &read.seq()[..chop_length]
             };
             writer.write(read.id(), read.desc(), seq).unwrap();
         }
     } else {
-        let output_file = create_output_file(output_loc_path, "chopped_reads.fastq");
+        let output_file = create_output_file(output_loc_path, "chopped.fastq");
         let mut writer = fastq::Writer::new(output_file);
 
         let mut fastq_reads_iter = get_fastq_iter_of_file(reads_path);
 
         while let Some(Ok(read)) = fastq_reads_iter.next() {
-            let (seq, qual) = if read.seq().len() < 180 {
+            let (seq, qual) = if read.seq().len() < chop_length {
                 (read.seq(), read.qual())
             } else {
-                (&read.seq()[..args.length], &read.qual()[..args.length])
+                (&read.seq()[..args.length], &read.qual()[..chop_length])
             };
             writer.write(read.id(), read.desc(), seq, qual).unwrap();
         }
