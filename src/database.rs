@@ -97,18 +97,6 @@ impl Database {
     }
 
     pub fn lossy_compression(&mut self, compression_level: usize) -> () {
-        let total_set_bits_before = self
-            .kmer_runs
-            .par_iter()
-            .map(|runs| runs.iter().count())
-            .sum::<usize>();
-        info!(
-            "total set bits before compression {}",
-            total_set_bits_before
-        );
-
-        let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
-
         fn can_compress(comp_level: usize, set_bits: usize, comp_gain: usize) -> bool {
             if comp_gain < 1 {
                 false
@@ -122,6 +110,20 @@ impl Database {
             }
         }
 
+        let total_set_bits_before = self
+            .kmer_runs
+            .par_iter()
+            .map(|runs| runs.iter().count())
+            .sum::<usize>();
+        info!(
+            "total set bits before compression {}",
+            total_set_bits_before
+        );
+
+        // Figure out how to use a map function. Easy to parallelize it if we can do that. 
+        // want to be able to do exactly what we are doing above essentially calling the parallel iterator
+        let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
+
         for encoding in self.kmer_runs.iter() {
             let runs = encoding
                 .get_raw_runs()
@@ -131,7 +133,11 @@ impl Database {
 
             let mut compressed_runs: Vec<u16> = vec![];
             let mut skip_iter = false;
+            // might be easier to just burn the next iteration of the iter (call next and never deal with the value)
 
+            // rewrite using windows of 2 and the last element of the origional vector, preferable keeping it throughout as a run instead of a u16
+
+            // note to self, move this up bc trevor will kill you or add it as an actual constant or import it from rle
             let max_encoded_value = (1 << 14) - 1;
 
             for (i, curr) in runs.iter().enumerate() {
@@ -148,6 +154,7 @@ impl Database {
                         // determine whether neighbors can incorporate this unencoded block
                         let merge_prev = {
                             if i > 0 {
+                                // could use .last() but would need unwrap as well - more readable
                                 match Run::from_u16(compressed_runs[compressed_runs.len() - 1]) {
                                     Run::Zeros(count) => {
                                         if tot_merged_bits + count <= max_encoded_value {
