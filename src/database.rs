@@ -24,7 +24,7 @@ pub struct Database {
     cutoff_threshold: BigExpFloat,
     file2taxid: Vec<(String, usize)>,
     kmer_len: usize,
-    kmer_runs: Vec<RunLengthEncoding>,
+    kmer_rles: Vec<RunLengthEncoding>,
     n_queries: u64,
     p_values: Vec<f64>,
     significant_hits: Vec<u64>,
@@ -91,7 +91,7 @@ impl Database {
             cutoff_threshold: BigExpFloat::from_f64(cutoff_threshold),
             file2taxid,
             kmer_len,
-            kmer_runs,
+            kmer_rles: kmer_runs,
             n_queries: num_queries,
             p_values,
             significant_hits,
@@ -112,45 +112,59 @@ impl Database {
             }
         }
 
-        let total_set_bits_before = self
-            .kmer_runs
-            .par_iter()
-            .map(|runs| runs.iter().count())
-            .sum::<usize>();
         info!(
             "total set bits before compression {}",
-            total_set_bits_before
+            self.kmer_rles
+                .par_iter()
+                .map(|runs| runs.iter().count())
+                .sum::<usize>()
         );
 
+        self.kmer_rles = self
+            .kmer_rles
+            .par_iter()
+            .map(|runs_vec| {
+                let mut compressed_runs: Vec<Run> = vec![];
 
-        self.kmer_runs = self.kmer_runs.par_iter().map(|runs_vec| {
-            let mut compressed_runs: Vec<Run> = vec![];
+                let collected_runs = runs_vec
+                    .get_raw_runs()
+                    .into_iter()
+                    .map(|run| Run::from_u16(*run))
+                    .collect_vec();
 
-            let collected_runs = runs_vec
-            .get_raw_runs()
-            .into_iter()
-            .map(|run| Run::from_u16(*run))
-            .collect_vec();
+                let final_window = collected_runs.len() - 1;
 
-            let final_window = collected_runs.len() - 1;
+                let mut runs_iter = collected_runs.windows(2).enumerate();
 
-            let mut runs_iter = collected_runs
-                .windows(2)
-                .enumerate();
-            
-            while let Some((index, window)) = runs_iter.next()
-            {
-                let curr_run = window[0];
-                let next_run = window[1];
+                while let Some((index, window)) = runs_iter.next() {
+                    let curr_run = window[0];
+                    let next_run = window[1];
 
-                match curr_run {
-                    Run::Uncompressed(bits) => {
-                        let set_bits = bits.count_ones() as usize;
-                        let mut total_merged_bits: u16 = 15;
+                    match curr_run {
+                        Run::Uncompressed(bits) => {
+                            let set_bits = bits.count_ones() as usize;
+                            let mut total_merged_bits: u16 = 15;
 
-                        let merge_prev = {
-                            if let Some(&prev_run) = compressed_runs.last() {
-                                match prev_run {
+                            let merge_prev = {
+                                if let Some(&prev_run) = compressed_runs.last() {
+                                    match prev_run {
+                                        Run::Zeros(count) => {
+                                            if total_merged_bits + count <= MAX_RUN {
+                                                total_merged_bits += count;
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        }
+                                        _ => false,
+                                    }
+                                } else {
+                                    false
+                                }
+                            };
+
+                            let merge_next = {
+                                match next_run {
                                     Run::Zeros(count) => {
                                         if total_merged_bits + count <= MAX_RUN {
                                             total_merged_bits += count;
@@ -159,82 +173,66 @@ impl Database {
                                             false
                                         }
                                     }
-                                    _ => {
-                                        false
-                                    }
+                                    _ => false,
                                 }
-                            } else {
-                                false
-                            }
-                        };
+                            };
 
-                        let merge_next = {
-                            match next_run {
-                                Run::Zeros(count) => {
-                                    if total_merged_bits + count <= MAX_RUN {
-                                        total_merged_bits += count;
-                                        true
+                            let comp_gain: usize = match (merge_prev, merge_next) {
+                                (false, false) => 0,
+                                (true, false) | (false, true) => 1,
+                                (true, true) => 2,
+                            };
+
+                            if can_compress(compression_level, set_bits, comp_gain) {
+                                if merge_prev {
+                                    if let Some(last) = compressed_runs.last_mut() {
+                                        *last = Run::from_u16(total_merged_bits);
                                     } else {
-                                        false
+                                        panic!(
+                                            "merge with previous attempted when no previous exists"
+                                        );
                                     }
-                                }
-                                _ => {
-                                    false
-                                }
-                            }
-                        };
-
-                        let comp_gain: usize = match (merge_prev, merge_next) {
-                            (false, false) => 0,
-                            (true, false) | (false, true) => 1,
-                            (true, true) => 2,
-                        };
-
-                        if can_compress(compression_level, set_bits, comp_gain) {
-                            if merge_prev {
-                                if let Some(last) = compressed_runs.last_mut() {
-                                    *last = Run::from_u16(total_merged_bits);
                                 } else {
-                                    panic!("merge with previous attempted when no previous exists");
+                                    compressed_runs.push(Run::from_u16(total_merged_bits));
+                                }
+
+                                if merge_next {
+                                    runs_iter.next();
                                 }
                             } else {
-                                compressed_runs.push(Run::from_u16(total_merged_bits));
+                                compressed_runs.push(curr_run);
                             }
 
-                            if merge_next {
-                                runs_iter.next();
+                            if index >= final_window && !merge_next {
+                                compressed_runs.push(next_run);
                             }
-                        } else {
+                        }
+                        _ => {
                             compressed_runs.push(curr_run);
-                        }
 
-                        if index >= final_window && !merge_next {
-                            compressed_runs.push(next_run);
-                        }
-                    }
-                    _ => {
-                        compressed_runs.push(curr_run);
-
-                        if index >= final_window {
-                            compressed_runs.push(next_run);
+                            if index >= final_window {
+                                compressed_runs.push(next_run);
+                            }
                         }
                     }
                 }
-            }
 
-            RunLengthEncoding::new(compressed_runs
-                .iter()
-                .map(|run| Run::to_u16(run))
-                .collect_vec()
-            )
-        }).collect::<Vec<RunLengthEncoding>>();
+                RunLengthEncoding::new(
+                    compressed_runs
+                        .iter()
+                        .map(|run| Run::to_u16(run))
+                        .collect_vec(),
+                )
+            })
+            .collect::<Vec<RunLengthEncoding>>();
 
-        let total_set_bits_after = self
-            .kmer_runs
-            .par_iter()
-            .map(|runs| runs.iter().count())
-            .sum::<usize>();
-        info!("total set bits after compression {}", total_set_bits_after);
+        info!(
+            "total set bits after compression {}",
+            self.kmer_rles
+                .par_iter()
+                .map(|runs| runs.iter().count())
+                .sum::<usize>()
+        );
 
         // Recompute the p_values and significant hits after
         self.recompute_statistics();
@@ -246,7 +244,7 @@ impl Database {
 
         let mut file2kmer_num = vec![0_usize; self.file2taxid.len()];
 
-        for kmer_runs in &self.kmer_runs {
+        for kmer_runs in &self.kmer_rles {
             for kmer in kmer_runs.iter() {
                 file2kmer_num[kmer] += 1;
             }
@@ -276,7 +274,7 @@ impl Database {
         // Find the hits for all kmers
         let mut max_kmer_index = 0;
         for (index, kmer) in KmerIter::from(read, self.kmer_len, self.canonical).enumerate() {
-            for sequence in self.kmer_runs[kmer].iter() {
+            for sequence in self.kmer_rles[kmer].iter() {
                 collected_hits[sequence] += 1;
                 max_kmer_index = index;
             }
