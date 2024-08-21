@@ -15,6 +15,8 @@ use crate::{
     rle::{NaiveRunLengthEncoding, Run, RunLengthEncoding},
 };
 
+const MAX_RUN: u16 = (1 << 14) - 1;
+
 #[derive(Serialize, Deserialize)]
 pub struct Database {
     canonical: bool,
@@ -120,51 +122,46 @@ impl Database {
             total_set_bits_before
         );
 
-        // Figure out how to use a map function. Easy to parallelize it if we can do that. 
-        // want to be able to do exactly what we are doing above essentially calling the parallel iterator
-        let mut compressed_encoding: Vec<RunLengthEncoding> = vec![];
 
-        for encoding in self.kmer_runs.iter() {
-            let runs = encoding
-                .get_raw_runs()
-                .into_iter()
-                .map(|run| Run::from_u16(*run))
-                .collect_vec();
+        self.kmer_runs = self.kmer_runs.par_iter().map(|runs_vec| {
+            let mut compressed_runs: Vec<Run> = vec![];
 
-            let mut compressed_runs: Vec<u16> = vec![];
-            let mut skip_iter = false;
-            // might be easier to just burn the next iteration of the iter (call next and never deal with the value)
+            let collected_runs = runs_vec
+            .get_raw_runs()
+            .into_iter()
+            .map(|run| Run::from_u16(*run))
+            .collect_vec();
 
-            // rewrite using windows of 2 and the last element of the origional vector, preferable keeping it throughout as a run instead of a u16
+            let final_window = collected_runs.len() - 1;
 
-            // note to self, move this up bc trevor will kill you or add it as an actual constant or import it from rle
-            let max_encoded_value = (1 << 14) - 1;
+            let mut runs_iter = collected_runs
+                .windows(2)
+                .enumerate();
+            
+            while let Some((index, window)) = runs_iter.next()
+            {
+                let curr_run = window[0];
+                let next_run = window[1];
 
-            for (i, curr) in runs.iter().enumerate() {
-                if skip_iter {
-                    skip_iter = false;
-                    continue;
-                }
-
-                match curr {
+                match curr_run {
                     Run::Uncompressed(bits) => {
                         let set_bits = bits.count_ones() as usize;
-                        let mut tot_merged_bits: u16 = 15;
+                        let mut total_merged_bits: u16 = 15;
 
-                        // determine whether neighbors can incorporate this unencoded block
                         let merge_prev = {
-                            if i > 0 {
-                                // could use .last() but would need unwrap as well - more readable
-                                match Run::from_u16(compressed_runs[compressed_runs.len() - 1]) {
+                            if let Some(&prev_run) = compressed_runs.last() {
+                                match prev_run {
                                     Run::Zeros(count) => {
-                                        if tot_merged_bits + count <= max_encoded_value {
-                                            tot_merged_bits += count;
+                                        if total_merged_bits + count <= MAX_RUN {
+                                            total_merged_bits += count;
                                             true
                                         } else {
                                             false
                                         }
                                     }
-                                    _ => false,
+                                    _ => {
+                                        false
+                                    }
                                 }
                             } else {
                                 false
@@ -172,20 +169,18 @@ impl Database {
                         };
 
                         let merge_next = {
-                            if i < runs.len() - 1 {
-                                match runs[i + 1] {
-                                    Run::Zeros(count) => {
-                                        if tot_merged_bits + count <= max_encoded_value {
-                                            tot_merged_bits += count;
-                                            true
-                                        } else {
-                                            false
-                                        }
+                            match next_run {
+                                Run::Zeros(count) => {
+                                    if total_merged_bits + count <= MAX_RUN {
+                                        total_merged_bits += count;
+                                        true
+                                    } else {
+                                        false
                                     }
-                                    _ => false,
                                 }
-                            } else {
-                                false
+                                _ => {
+                                    false
+                                }
                             }
                         };
 
@@ -195,32 +190,44 @@ impl Database {
                             (true, true) => 2,
                         };
 
-                        // test whether merge should be completed
                         if can_compress(compression_level, set_bits, comp_gain) {
-                            skip_iter = merge_next;
                             if merge_prev {
-                                let target_index = compressed_runs.len() - 1;
-                                compressed_runs[target_index] = tot_merged_bits;
-                            } else if merge_next {
-                                compressed_runs.push(tot_merged_bits);
+                                if let Some(last) = compressed_runs.last_mut() {
+                                    *last = Run::from_u16(total_merged_bits);
+                                } else {
+                                    panic!("merge with previous attempted when no previous exists");
+                                }
                             } else {
-                                panic!("compression attempted when not possible");
+                                compressed_runs.push(Run::from_u16(total_merged_bits));
+                            }
+
+                            if merge_next {
+                                runs_iter.next();
                             }
                         } else {
-                            compressed_runs.push(Run::to_u16(curr));
+                            compressed_runs.push(curr_run);
+                        }
+
+                        if index >= final_window && !merge_next {
+                            compressed_runs.push(next_run);
                         }
                     }
                     _ => {
-                        compressed_runs.push(Run::to_u16(curr));
+                        compressed_runs.push(curr_run);
+
+                        if index >= final_window {
+                            compressed_runs.push(next_run);
+                        }
                     }
                 }
             }
 
-            compressed_encoding.push(RunLengthEncoding::new(compressed_runs));
-        }
-
-        // update kmer_runs
-        self.kmer_runs = compressed_encoding;
+            RunLengthEncoding::new(compressed_runs
+                .iter()
+                .map(|run| Run::to_u16(run))
+                .collect_vec()
+            )
+        }).collect::<Vec<RunLengthEncoding>>();
 
         let total_set_bits_after = self
             .kmer_runs

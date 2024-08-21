@@ -6,7 +6,7 @@ use tracing::warn;
 
 const MAX_UNCOMPRESSED_BITS: usize = 15;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Run {
     Zeros(u16),
     Ones(u16),
