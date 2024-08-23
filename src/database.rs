@@ -123,10 +123,10 @@ impl Database {
         self.kmer_rles = self
             .kmer_rles
             .par_iter()
-            .map(|runs_vec| {
+            .map(|uncompressed_runs| {
                 let mut compressed_runs: Vec<Run> = vec![];
 
-                let collected_runs = runs_vec
+                let collected_runs = uncompressed_runs
                     .get_raw_runs()
                     .into_iter()
                     .map(|run| Run::from_u16(*run))
@@ -268,19 +268,17 @@ impl Database {
         self.significant_hits = significant_hits;
     }
 
-    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat, full_read: bool) -> usize {
+    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat, n_max: u64) -> usize {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
-        let mut max_kmer_index = 0;
-        for (index, kmer) in KmerIter::from(read, self.kmer_len, self.canonical).enumerate() {
+        let mut n_total = 0;
+        for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
             for sequence in self.kmer_rles[kmer].iter() {
                 collected_hits[sequence] += 1;
-                max_kmer_index = index;
             }
+            n_total += 1;
         }
-
-        let n_total = max_kmer_index + 1;
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
@@ -290,27 +288,24 @@ impl Database {
             .zip(self.p_values.iter())
             .enumerate()
             .filter_map(|(index, (n_hits, p))| {
-                let x = if full_read {
-                    n_hits as f64
+                let x = if n_total <= n_max {
+                    n_hits
                 } else {
-                    (n_hits as f64 / n_total as f64) * self.n_queries as f64
+                    ((n_hits as f64 / n_total as f64) * n_max as f64).round() as u64
                 };
-                let n = if full_read {
-                    n_total as u64
-                } else {
-                    self.n_queries
-                };
+                let n = if n_total <= n_max { n_total } else { n_max };
 
-                // Only compute if the number of hits is more than significant
-                if x > (n as f64 * p) {
+                // This check saves runtime in practice
+                // Only do probability computation if the classification probability is going to be < 0.5
+                if x as f64 > (n as f64 * p) {
                     // Perform the computation using f64
-                    let prob_f64 = Binomial::new(*p, n).unwrap().sf(x.round() as u64);
+                    let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
                     // If the probability is greater than 0.0, use it
                     let prob_big_exp = if prob_f64 > 0.0 {
                         BigExpFloat::from_f64(prob_f64)
                     } else {
                         // Otherwise, compute the probability using big exp
-                        sf(*p, n, x.round() as u64, &self.consts)
+                        sf(*p, n, x, &self.consts)
                     };
                     Some((index, prob_big_exp))
                 } else {
