@@ -12,10 +12,8 @@ use crate::{
     binomial_sf::sf,
     consts::Consts,
     kmer_iter::KmerIter,
-    rle::{NaiveRunLengthEncoding, Run, RunLengthEncoding},
+    rle::{NaiveRunLengthEncoding, Run, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
-
-const MAX_RUN: u16 = (1 << 14) - 1;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
@@ -99,16 +97,23 @@ impl Database {
     }
 
     pub fn lossy_compression(&mut self, compression_level: usize) -> () {
-        fn can_compress(comp_level: usize, set_bits: usize, comp_gain: usize) -> bool {
-            if comp_gain < 1 {
+        fn should_compress(compression_level: usize, set_bits: u32, run_reduction: usize) -> bool {
+            if run_reduction < 1 {
                 false
             } else {
-                match comp_level {
-                    1 => set_bits == 1 && comp_gain == 2,
-                    2 => set_bits == 1 || set_bits == 2 && comp_gain == 2,
-                    3 => set_bits == 1 || set_bits == 2 || set_bits <= 4 && comp_gain == 2,
+                match compression_level {
+                    1 => set_bits == 1 && run_reduction == 2,
+                    2 => set_bits == 1 || set_bits == 2 && run_reduction == 2,
+                    3 => set_bits == 1 || set_bits == 2 || set_bits <= 4 && run_reduction == 2,
                     _ => false,
                 }
+            }
+        }
+
+        fn get_zeros(run: Option<&Run>) -> Option<usize> {
+            match run {
+                Some(Run::Zeros(x)) => Some(*x as usize),
+                _ => None,
             }
         }
 
@@ -123,104 +128,128 @@ impl Database {
         self.kmer_rles = self
             .kmer_rles
             .par_iter()
-            .map(|uncompressed_runs| {
-                let mut compressed_runs: Vec<Run> = vec![];
+            .map(|current_runs| {
+                // variable to hold the new lossy compressed runs as u16s
+                let mut compressed_runs = vec![];
 
-                let collected_runs = uncompressed_runs
+                // peekable iterator over the current runs
+                let mut runs_iter = current_runs
                     .get_raw_runs()
                     .into_iter()
                     .map(|run| Run::from_u16(*run))
-                    .collect_vec();
+                    .peekable();
 
-                let final_window = collected_runs.len() - 1;
-
-                let mut runs_iter = collected_runs.windows(2).enumerate();
-
-                while let Some((index, window)) = runs_iter.next() {
-                    let curr_run = window[0];
-                    let next_run = window[1];
-
+                while let Some(curr_run) = runs_iter.next() {
                     match curr_run {
+                        // if the current run is an uncompressed run, lossy compression may apply
                         Run::Uncompressed(bits) => {
-                            let set_bits = bits.count_ones() as usize;
-                            let mut total_merged_bits: u16 = 15;
+                            // the following variables are `Option` types
+                            // if `None`, the previous or next run either did not exist or was not a run of zeros
+                            // otherwise, it will be `Some(<length of zero run>)`
+                            let prev_zeros = get_zeros(compressed_runs.last());
+                            let next_zeros = get_zeros(runs_iter.peek());
 
-                            let merge_prev = {
-                                if let Some(&prev_run) = compressed_runs.last() {
-                                    match prev_run {
-                                        Run::Zeros(count) => {
-                                            if total_merged_bits + count <= MAX_RUN {
-                                                total_merged_bits += count;
-                                                true
-                                            } else {
-                                                false
-                                            }
-                                        }
-                                        _ => false,
-                                    }
-                                } else {
-                                    false
+                            let set_bits = bits.count_ones();
+
+                            // decide what to do based on the previous and next run
+                            match (prev_zeros, next_zeros) {
+                                (None, None) => {
+                                    // no lossy compression possible, push and continue
+                                    compressed_runs.push(curr_run);
                                 }
-                            };
-
-                            let merge_next = {
-                                match next_run {
-                                    Run::Zeros(count) => {
-                                        if total_merged_bits + count <= MAX_RUN {
-                                            total_merged_bits += count;
-                                            true
+                                (Some(length), None) => {
+                                    // try to merge with the previous
+                                    let run_reduction =
+                                        if length + MAX_UNCOMPRESSED_BITS <= MAX_RUN as usize {
+                                            1
                                         } else {
-                                            false
+                                            0
+                                        };
+                                    if should_compress(compression_level, set_bits, run_reduction) {
+                                        match compressed_runs.last_mut().unwrap() {
+                                            // intentionally overloading the variable `length` because they are the same thing
+                                            Run::Zeros(length) => {
+                                                *length += MAX_UNCOMPRESSED_BITS as u16
+                                            }
+                                            _ => panic!("impossible case"),
                                         }
-                                    }
-                                    _ => false,
-                                }
-                            };
-
-                            let comp_gain: usize = match (merge_prev, merge_next) {
-                                (false, false) => 0,
-                                (true, false) | (false, true) => 1,
-                                (true, true) => 2,
-                            };
-
-                            if can_compress(compression_level, set_bits, comp_gain) {
-                                if merge_prev {
-                                    if let Some(last) = compressed_runs.last_mut() {
-                                        *last = Run::from_u16(total_merged_bits);
                                     } else {
-                                        panic!(
-                                            "merge with previous attempted when no previous exists"
-                                        );
+                                        // if we shouldn't compress, push and continue
+                                        compressed_runs.push(curr_run);
                                     }
-                                } else {
-                                    compressed_runs.push(Run::from_u16(total_merged_bits));
                                 }
-
-                                if merge_next {
-                                    runs_iter.next();
+                                (None, Some(length)) => {
+                                    // try to merge with the next
+                                    let run_reduction =
+                                        if length + MAX_UNCOMPRESSED_BITS <= MAX_RUN as usize {
+                                            1
+                                        } else {
+                                            0
+                                        };
+                                    if should_compress(compression_level, set_bits, run_reduction) {
+                                        // get/burn the next run in the iterator which should be zeros
+                                        match runs_iter.next().unwrap() {
+                                            // intentionally overloading the variable `length` because they are the same thing
+                                            Run::Zeros(length) => compressed_runs.push(Run::Zeros(
+                                                MAX_UNCOMPRESSED_BITS as u16 + length,
+                                            )),
+                                            _ => panic!("impossible case"),
+                                        }
+                                    } else {
+                                        // if we shouldn't compress, push and continue
+                                        compressed_runs.push(curr_run);
+                                    }
                                 }
-                            } else {
-                                compressed_runs.push(curr_run);
-                            }
-
-                            if index >= final_window && !merge_next {
-                                compressed_runs.push(next_run);
-                            }
+                                (Some(prev_length), Some(next_length)) => {
+                                    // try to merge with both
+                                    let total_length =
+                                        prev_length + MAX_UNCOMPRESSED_BITS + next_length;
+                                    let run_reduction = if total_length <= MAX_RUN as usize {
+                                        2
+                                    } else if total_length <= (MAX_RUN as usize) * 2 {
+                                        1
+                                    } else {
+                                        0
+                                    };
+                                    if should_compress(compression_level, set_bits, run_reduction) {
+                                        match (
+                                            compressed_runs.last_mut().unwrap(),
+                                            runs_iter.next().unwrap(),
+                                        ) {
+                                            // once again, intentionally overloading these variables because they are the same
+                                            (Run::Zeros(prev_length), Run::Zeros(next_length)) => {
+                                                if total_length <= MAX_RUN as usize {
+                                                    // if the total length can fit as one run, just add it to the existing run
+                                                    *prev_length +=
+                                                        MAX_UNCOMPRESSED_BITS as u16 + next_length;
+                                                } else {
+                                                    // otherwise, max out the previous run and insert the leftover as a new run of zeros
+                                                    *prev_length = MAX_RUN;
+                                                    compressed_runs.push(Run::Zeros(
+                                                        (total_length - MAX_RUN as usize) as u16,
+                                                    ))
+                                                }
+                                            }
+                                            _ => panic!("impossible case"),
+                                        }
+                                    } else {
+                                        // if we shouldn't compress, push and continue
+                                        compressed_runs.push(curr_run);
+                                    }
+                                }
+                            };
                         }
+                        // if the current run isn't an uncompressed run, push it and continue
                         _ => {
                             compressed_runs.push(curr_run);
-
-                            if index >= final_window {
-                                compressed_runs.push(next_run);
-                            }
                         }
-                    }
-                }
+                    } // end match
+                } // end while
 
                 RunLengthEncoding::new(
                     compressed_runs
-                        .iter()
-                        .map(|run| Run::to_u16(run))
+                        .into_iter()
+                        .map(|run| run.to_u16())
                         .collect_vec(),
                 )
             })

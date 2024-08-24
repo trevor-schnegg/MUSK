@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::slice::Iter;
 use tracing::warn;
 
-const MAX_UNCOMPRESSED_BITS: usize = 15;
+pub const MAX_RUN: u16 = (1 << 14) - 1;
+pub const MAX_UNCOMPRESSED_BITS: usize = 15;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Run {
@@ -16,8 +17,6 @@ pub enum Run {
 /// Zeros = 0b_00_14-bit-count
 /// Ones = 0b_01_14-bit-count
 /// Uncompressed = 0b_1_bits
-
-const MAX_RUN: u16 = (1 << 14) - 1;
 
 impl Run {
     pub fn to_u16(&self) -> u16 {
