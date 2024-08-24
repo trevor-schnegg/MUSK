@@ -22,7 +22,7 @@ struct Args {
     /// Otherwise, the forward and reverse complement will be queried
     canonical: bool,
 
-    #[arg(short, long, default_value_t = 64)]
+    #[arg(short, long, default_value_t = 12)]
     /// The exponent e for the significance of hits
     /// Used in the equation 10^{-e} to determine statistical significance
     /// MUST be lower than the cutoff provided for database construction
@@ -32,7 +32,7 @@ struct Args {
     /// Length of k-mer in the database
     kmer_length: usize,
 
-    #[arg(short, long, default_value_t = 400)]
+    #[arg(short, long, default_value_t = 100)]
     // The maximum number of queries to use in the binomial function
     max_queries: u64,
 
