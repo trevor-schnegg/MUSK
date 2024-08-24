@@ -97,12 +97,7 @@ fn main() {
 
     info!("roaring bitmaps created! constructing database...");
 
-    let mut database = Database::from(
-        bitmaps,
-        canonical,
-        file2taxid_ordering,
-        kmer_len,
-    );
+    let mut database = Database::from(bitmaps, canonical, file2taxid_ordering, kmer_len);
 
     match compresssion_level {
         None => {}
