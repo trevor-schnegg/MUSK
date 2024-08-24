@@ -8,7 +8,6 @@ use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::cmp::min;
-use std::ops::Neg;
 use std::path::Path;
 use tracing::info;
 
@@ -25,11 +24,6 @@ struct Args {
     /// Level of compression. If not supplied no lossy compression is used.
     /// Otherwise, 1 for minimal, 2 for medium, and 3 for heavy compression
     compression_level: Option<usize>,
-
-    #[arg(short, long, default_value_t = 9)]
-    /// The exponent e for the significance of hits
-    /// Used in the equation 10^{-e} to determine statistical significance
-    cutoff_threshold_exp: i32,
 
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
@@ -60,9 +54,7 @@ fn main() {
 
     // Parse arguments from the command line
     let args = Args::parse();
-    let cutoff_threshold = 10.0_f64.powi((args.cutoff_threshold_exp).neg());
     let kmer_len = args.kmer_length;
-    let n_queries = args.query_number;
     let ordering_file_path = Path::new(&args.ordering_file);
     let output_loc_path = Path::new(&args.output_location);
     let ref_dir_path = Path::new(&args.reference_directory);
@@ -108,10 +100,8 @@ fn main() {
     let mut database = Database::from(
         bitmaps,
         canonical,
-        cutoff_threshold,
         file2taxid_ordering,
         kmer_len,
-        n_queries,
     );
 
     match compresssion_level {

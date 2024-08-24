@@ -19,23 +19,18 @@ use crate::{
 pub struct Database {
     canonical: bool,
     consts: Consts,
-    cutoff_threshold: BigExpFloat,
     file2taxid: Vec<(String, usize)>,
     kmer_len: usize,
     kmer_rles: Vec<RunLengthEncoding>,
-    n_queries: u64,
     p_values: Vec<f64>,
-    significant_hits: Vec<u64>,
 }
 
 impl Database {
     pub fn from(
         bitmaps: Vec<RoaringBitmap>,
         canonical: bool,
-        cutoff_threshold: f64,
         file2taxid: Vec<(String, usize)>,
         kmer_len: usize,
-        num_queries: u64,
     ) -> Self {
         let total_num_kmers = 4_usize.pow(kmer_len as u32);
 
@@ -43,15 +38,6 @@ impl Database {
             .par_iter()
             .map(|bitmap| bitmap.len() as f64 / total_num_kmers as f64)
             .collect::<Vec<f64>>();
-
-        let significant_hits = p_values
-            .par_iter()
-            .map(|p| {
-                Binomial::new(*p, num_queries)
-                    .unwrap()
-                    .inverse_cdf(cutoff_threshold)
-            })
-            .collect::<Vec<u64>>();
 
         let mut naive_kmer_runs = vec![NaiveRunLengthEncoding::new(); total_num_kmers];
         info!("constructing naive runs...");
@@ -86,13 +72,10 @@ impl Database {
         Database {
             canonical,
             consts: Consts::new(),
-            cutoff_threshold: BigExpFloat::from_f64(cutoff_threshold),
             file2taxid,
             kmer_len,
             kmer_rles: kmer_runs,
-            n_queries: num_queries,
             p_values,
-            significant_hits,
         }
     }
 
@@ -269,7 +252,6 @@ impl Database {
 
     fn recompute_statistics(&mut self) -> () {
         let total_num_kmers = 4_usize.pow(self.kmer_len as u32) as f64;
-        let cutoff_threshold = self.cutoff_threshold.as_f64();
 
         let mut file2kmer_num = vec![0_usize; self.file2taxid.len()];
 
@@ -284,17 +266,7 @@ impl Database {
             .map(|kmer_num| kmer_num as f64 / total_num_kmers)
             .collect::<Vec<f64>>();
 
-        let significant_hits = p_values
-            .par_iter()
-            .map(|p| {
-                Binomial::new(*p, self.n_queries)
-                    .unwrap()
-                    .inverse_cdf(cutoff_threshold)
-            })
-            .collect::<Vec<u64>>();
-
         self.p_values = p_values;
-        self.significant_hits = significant_hits;
     }
 
     pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat, n_max: u64) -> usize {
