@@ -70,24 +70,24 @@ fn main() {
 
     let database = load_data_from_file::<Database>(database_path);
 
-    info!("database loaded! classifying reads...");
+    // info!("database loaded! classifying reads...");
 
-    let read_iter = get_fastq_iter_of_file(reads_path);
+    // let read_iter = get_fastq_iter_of_file(reads_path);
 
-    read_iter
-        .par_bridge()
-        .into_par_iter()
-        .for_each(|record_result| match record_result {
-            Err(_) => {
-                warn!("An error was encountered while parsing the fastq file, skipping a read...")
-            }
-            Ok(record) => {
-                let mut file = Arc::clone(&output_file_arc);
-                let taxid = database.classify(record.seq(), cutoff_threshold, n_max);
-                file.write(format!("{}\t{}\n", record.id(), taxid).as_bytes())
-                    .expect("unable to write to output file");
-            }
-        });
+    // read_iter
+    //     .par_bridge()
+    //     .into_par_iter()
+    //     .for_each(|record_result| match record_result {
+    //         Err(_) => {
+    //             warn!("An error was encountered while parsing the fastq file, skipping a read...")
+    //         }
+    //         Ok(record) => {
+    //             let mut file = Arc::clone(&output_file_arc);
+    //             let taxid = database.classify(record.seq(), cutoff_threshold, n_max);
+    //             file.write(format!("{}\t{}\n", record.id(), taxid).as_bytes())
+    //                 .expect("unable to write to output file");
+    //         }
+    //     });
 
-    info!("done!");
+    // info!("done!");
 }
