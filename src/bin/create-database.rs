@@ -75,7 +75,7 @@ fn main() {
     };
 
     // Create the output file so it errors if an incorrect output file is provided before computation
-    let mut output_file = create_output_file(output_loc_path, "musk.db");
+    let output_file = create_output_file(output_loc_path, "musk.db");
 
     // Load the file2taxid ordering
     let file2taxid_ordering = load_string2taxid(ordering_file_path);
@@ -108,7 +108,7 @@ fn main() {
         }
     }
 
-    dump_data_to_file(bincode::serialize(&database).unwrap(), &mut output_file).unwrap();
+    dump_data_to_file(&database, output_file).expect("could not output database to file");
 
     info!("done!");
 }

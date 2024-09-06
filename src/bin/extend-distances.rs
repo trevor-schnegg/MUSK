@@ -75,7 +75,7 @@ fn main() {
     info!("use canonical k-mers: {}", canonical);
 
     // Create the output file
-    let mut output_file = if canonical {
+    let output_file = if canonical {
         create_output_file(output_loc_path, "musk.c.pd")
     } else {
         create_output_file(output_loc_path, "musk.pd")
@@ -170,11 +170,7 @@ fn main() {
         .chain(new_distances.into_iter())
         .collect_vec();
 
-    dump_data_to_file(
-        bincode::serialize(&(all_distances, all_file2taxid)).unwrap(),
-        &mut output_file,
-    )
-    .unwrap();
+    dump_data_to_file(&(all_distances, all_file2taxid), output_file).unwrap();
 
     info!("done!");
 }

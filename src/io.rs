@@ -1,11 +1,10 @@
 use itertools::Itertools;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::any::type_name;
 use std::fs::File;
-use std::io::Read;
-use std::io::{BufRead, BufReader, Write};
+use std::io::BufWriter;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::{io, vec};
 use tracing::{error, info, warn};
 
 pub fn create_output_file(path: &Path, extension: &str) -> File {
@@ -76,8 +75,9 @@ pub fn load_string2taxid(string2taxid: &Path) -> Vec<(String, usize)> {
         .collect_vec()
 }
 
-pub fn dump_data_to_file(data: Vec<u8>, file: &mut File) -> io::Result<()> {
-    file.write_all(&*data)
+pub fn dump_data_to_file<T: Serialize>(data: &T, file: File) -> bincode::Result<()> {
+    let buf_writer = BufWriter::new(file);
+    bincode::serialize_into(buf_writer, data)
 }
 
 pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {

@@ -65,7 +65,7 @@ fn main() {
     info!("use canonical k-mers: {}", canonical);
 
     // Create the output file
-    let mut output_file = if canonical {
+    let output_file = if canonical {
         create_output_file(output_loc_path, "musk.c.pd")
     } else {
         create_output_file(output_loc_path, "musk.pd")
@@ -118,11 +118,8 @@ fn main() {
 
     info!("distance matrix completed! outputting to file...");
 
-    dump_data_to_file(
-        bincode::serialize(&(distances, file2taxid)).unwrap(),
-        &mut output_file,
-    )
-    .unwrap();
+    dump_data_to_file(&(distances, file2taxid), output_file)
+        .expect("could not output distances to file");
 
     info!("done!");
 }
