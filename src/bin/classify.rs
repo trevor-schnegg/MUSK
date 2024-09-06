@@ -84,7 +84,7 @@ fn main() {
             Ok(record) => {
                 let mut file = Arc::clone(&output_file_arc);
                 let taxid = database.classify(record.seq(), cutoff_threshold, n_max);
-                file.write(format!("{}\t{}\n", record, taxid).as_bytes())
+                file.write(format!("{}\t{}\n", record.id(), taxid).as_bytes())
                     .expect("unable to write to output file");
             }
         });
