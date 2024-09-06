@@ -64,11 +64,12 @@ fn main() {
     let reads_path = Path::new(&args.reads);
 
     let output_file = create_output_file(output_loc_path, "musk.r2t");
-    let output_file_arc = Arc::new(output_file);
 
     info!("loading database at {:?}", database_path);
 
-    let database = load_data_from_file::<Database>(database_path);
+    load_data_from_file::<Database>(database_path);
+
+    info!("done!")
 
     // info!("database loaded! classifying reads...");
 

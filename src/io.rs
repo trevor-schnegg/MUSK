@@ -81,10 +81,8 @@ pub fn dump_data_to_file(data: Vec<u8>, file: &mut File) -> io::Result<()> {
 }
 
 pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {
-    let mut f = File::open(path).expect(&*format!("could not open file at {:?}", path));
-    let mut buf: Vec<u8> = vec![];
-    f.read_to_end(&mut buf).unwrap();
-    bincode::deserialize(&*buf).expect(&*format!(
+    let f = File::open(path).expect(&*format!("could not open file at {:?}", path));
+    bincode::deserialize_from(f).expect(&*format!(
         "failed to deserialize data at {:?} into {}",
         path,
         type_name::<T>()
