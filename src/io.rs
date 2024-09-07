@@ -81,8 +81,8 @@ pub fn dump_data_to_file<T: Serialize>(data: &T, file: File) -> bincode::Result<
 }
 
 pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {
-    let f = File::open(path).expect(&*format!("could not open file at {:?}", path));
-    let buf_reader = BufReader::new(f);
+    let buf_reader =
+        BufReader::new(File::open(path).expect(&*format!("could not open file at {:?}", path)));
     bincode::deserialize_from(buf_reader).expect(&*format!(
         "failed to deserialize data at {:?} into {}",
         path,

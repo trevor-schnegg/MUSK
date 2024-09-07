@@ -4,12 +4,12 @@ use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fastq_iter_of_file;
+use rayon::prelude::*;
 use std::io::{BufWriter, Write};
 use std::ops::Neg;
 use std::path::Path;
-use std::sync::{mpsc, Arc};
-use threadpool::ThreadPool;
-use tracing::info;
+use std::sync::Mutex;
+use tracing::{info, warn};
 
 /// Creates a run length encoding database
 #[derive(Parser)]
@@ -67,7 +67,7 @@ fn main() {
     let reads_path = Path::new(&args.reads);
 
     let output_file = create_output_file(output_loc_path, "musk.r2t");
-    let mut writer = BufWriter::new(output_file);
+    let writer = Mutex::new(BufWriter::new(output_file));
 
     info!("loading database at {:?}", database_path);
 
@@ -75,34 +75,24 @@ fn main() {
 
     info!("database loaded! classifying reads...");
 
-    let mut read_iter = get_fastq_iter_of_file(reads_path);
+    let read_iter = get_fastq_iter_of_file(reads_path);
 
-    let (sender, receiver) = mpsc::channel();
-    let pool = ThreadPool::new(args.thread_number);
-    let database_arc = Arc::new(database);
-
-    while let Some(Ok(read)) = read_iter.next() {
-        let sender_clone = sender.clone();
-        let database_arc_clone = database_arc.clone();
-
-        pool.execute(move || {
-            sender_clone
-                .send((
-                    read.id().to_string(),
-                    database_arc_clone.classify(read.seq(), cutoff_threshold, args.max_queries),
-                ))
-                .unwrap();
-        })
-    }
-
-    drop(sender);
-
-    for (readid, taxid) in receiver {
-        // Print the classification to a file
-        writer
-            .write(format!("{}\t{}\n", readid, taxid).as_bytes())
-            .expect("could not write to output file");
-    }
+    read_iter
+        .par_bridge()
+        .into_par_iter()
+        .for_each(|record_result| match record_result {
+            Err(_) => {
+                warn!("error encountered while reading fastq file");
+                warn!("skipping the read that caused the error")
+            }
+            Ok(record) => {
+                let taxid = database.classify(record.seq(), cutoff_threshold, args.max_queries);
+                let mut writer = writer.lock().unwrap();
+                writer
+                    .write(format!("{}\t{}\n", record.id(), taxid).as_bytes())
+                    .expect("could not write to output file");
+            }
+        });
 
     info!("done!");
 }
