@@ -1,39 +1,49 @@
 use bio::io::{fasta, fastq};
 use bio::utils::TextSlice;
+use rayon::prelude::*;
 use roaring::RoaringBitmap;
-use std::fs;
 use std::fs::File;
+use std::fs::{self, DirEntry};
 use std::io::BufReader;
 use std::path::Path;
 use std::{collections::HashSet, path::PathBuf};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::kmer_iter::KmerIter;
 
 pub const XOR_NUMBER: usize = 188_888_881;
 
+fn is_fasta_file(entry: &DirEntry) -> bool {
+    let entry_file_name = entry.file_name().to_str().unwrap().to_string();
+    entry_file_name.ends_with(".fna")
+        || entry_file_name.ends_with(".fasta")
+        || entry_file_name.ends_with(".fa")
+}
+
 pub fn get_fasta_files(reference_loc: &Path) -> Vec<PathBuf> {
     let dir_content = fs::read_dir(reference_loc).expect("could not read reference directory");
     dir_content
+        .par_bridge()
+        .into_par_iter()
         .filter_map(|dir_entry| match dir_entry {
             Ok(entry) => {
-                let entry_file_name = entry.file_name().to_str().unwrap().to_string();
-                if entry.path().is_file() && (entry_file_name.ends_with(".fna") || entry_file_name.ends_with(".fasta")) {
+                if entry.path().is_file() && is_fasta_file(&entry) {
                     Some(entry.path())
                 } else {
                     warn!(
-                        "found reference directory entry '{:?}' that did not end with '.fna' or '.fasta'. skipping...",
+                        "directory entry {:?} did not end with '.fna', '.fasta', or '.fa', skipping...",
                         entry
                     );
                     None
                 }
             }
             Err(e) => {
-                error!("{}", e);
-                warn!(
-                    "previous error found while reading reference directory at {:?}. skipping...",
+                error!(
+                    "error encountered while reading reference directory {:?}",
                     reference_loc
                 );
+                error!("{}", e);
+                warn!("attempting to continue execution...");
                 None
             }
         })
@@ -178,16 +188,12 @@ pub fn greedy_ordering(distances: &Vec<Vec<u32>>, start_index: usize) -> Vec<usi
         ordering.push(next_index);
         connected_indices.insert(next_index);
         current_index = next_index;
-
-        if ordering.len() % 2500 == 0 {
-            debug!("found ordering for {} bitmaps", ordering.len());
-        }
     }
 
     ordering
 }
 
-pub fn average_hamming_distance(ordering: &Vec<usize>, distances: &Vec<Vec<u32>>) -> (f64, u64) {
+pub fn ordering_statistics(ordering: &Vec<usize>, distances: &Vec<Vec<u32>>) -> (f64, u64) {
     let sum = ordering
         .windows(2)
         .map(|x| {

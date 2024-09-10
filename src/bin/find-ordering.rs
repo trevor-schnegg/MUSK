@@ -2,9 +2,12 @@ use clap::Parser;
 use musk::{
     io::{create_output_file, load_data_from_file},
     tracing::start_musk_tracing_subscriber,
-    utility::{average_hamming_distance, greedy_ordering},
+    utility::{greedy_ordering, ordering_statistics},
 };
-use std::{io::Write, path::Path};
+use std::{
+    io::{BufWriter, Write},
+    path::Path,
+};
 use tracing::{debug, info};
 
 /// Creates an ordering of files based on a pairwise distance matrix
@@ -14,9 +17,10 @@ use tracing::{debug, info};
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// The location of the output
-    /// If a file, an extension is added
-    /// If a directory, the normal extension is the file name
+    /// Where to write the output
+    /// If a file, '.musk.o.f2t' is added
+    /// If a directory, 'musk.o.f2t' will be the file name
+    /// Name means: musk, (o)rdered, (f)ile(2)(t)axid
     output_location: String,
 
     #[arg(short, long, default_value_t = 0)]
@@ -37,30 +41,10 @@ fn main() {
     let distances_file = Path::new(&args.distances);
     let output_loc_path = Path::new(&args.output_location);
 
-    // If canonical was used for the distances, store this
-    let canonical = if distances_file
-        .file_name()
-        .expect("provided distances is not a file")
-        .to_str()
-        .unwrap()
-        .contains(".c.")
-    {
-        true
-    } else {
-        false
-    };
-
-    info!("canonical k-mers used for distances: {}", canonical);
-
-    // If canonical, carry the file extension to the next output
-    let mut output_file = if canonical {
-        create_output_file(output_loc_path, "musk.o.c.f2t")
-    } else {
-        create_output_file(output_loc_path, "musk.o.f2t")
-    };
+    // Create the output file
+    let mut output_file = BufWriter::new(create_output_file(output_loc_path, "musk.o.f2t"));
 
     info!("loading distances at {}", args.distances);
-
     let (distances, file2taxid) =
         load_data_from_file::<(Vec<Vec<u32>>, Vec<(String, usize)>)>(distances_file);
 
@@ -69,8 +53,8 @@ fn main() {
 
     // Perform the greedy solution
     let greedy_ordering = greedy_ordering(&distances, args.start);
-    let avg_dist_output = average_hamming_distance(&greedy_ordering, &distances);
-    debug!("length of tour: {}", avg_dist_output.1);
+    let (_avg_dist, total_dist) = ordering_statistics(&greedy_ordering, &distances);
+    debug!("length of tour: {}", total_dist);
 
     for index in greedy_ordering {
         let (files_string, taxid) = &file2taxid[index];

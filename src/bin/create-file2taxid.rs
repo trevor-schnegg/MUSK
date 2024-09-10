@@ -5,24 +5,25 @@ use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::{get_fasta_files, get_fasta_iter_of_file};
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use taxonomy::{ncbi, TaxRank, Taxonomy};
 use tracing::{error, info, warn};
 
-/// Creates a file2taxid file of the form <fasta-file>\t<tax-id> for a given a reference location
+/// Creates a file2taxid file of the form <fasta-file>\t<taxid> for a given a reference location
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// The location of the output
-    /// If a file, an extension is added
-    /// If a directory, the normal extension is the file name
+    /// Where to write the output
+    /// If a file, '.musk.f2t' is added
+    /// If a directory, 'musk.f2t' will be the file name
+    /// Name means: musk, (f)ile(2)(t)axid
     output_location: String,
 
     #[arg()]
-    /// Accession2taxid file
+    /// The accession2taxid map file
     accession2taxid: String,
 
     #[arg()]
@@ -46,25 +47,16 @@ fn main() {
     let taxonomy_dir = Path::new(&args.taxonomy_directory);
 
     // Create the output file
-    let mut output_file = create_output_file(output_loc_path, "musk.f2t");
+    let mut output_file = BufWriter::new(create_output_file(output_loc_path, "musk.f2t"));
 
     info!("reading accession2taxid at {}", args.accession2taxid);
-
     let accession2taxid: HashMap<String, usize> =
         HashMap::from_iter(load_string2taxid(accession2taxid_path).into_iter());
 
-    info!(
-        "accession2taxid loaded! reading taxonomy at {}",
-        args.taxonomy_directory
-    );
-
+    info!("reading taxonomy at {}", args.taxonomy_directory);
     let taxonomy = ncbi::load(taxonomy_dir).unwrap();
 
-    info!(
-        "taxonomy read! looping through sequences at {}",
-        args.reference_directory
-    );
-
+    info!("looping through files at {}", args.reference_directory);
     let file2taxid = get_fasta_files(reference_dir_path)
         .into_par_iter()
         .progress()
@@ -83,21 +75,18 @@ fn main() {
                         let mut taxid = accession2taxid[record.id()];
 
                         // Try to move the taxid up to the species level, if possible
-                        match taxonomy.parent_at_rank(taxid as usize, TaxRank::Species) {
-                            Ok(Some((species_taxid, _distance))) => {
-                                taxid = species_taxid;
-                            }
-                            _ => {}
+                        if let Ok(Some((species_taxid, _distance))) =
+                            taxonomy.parent_at_rank(taxid as usize, TaxRank::Species)
+                        {
+                            taxid = species_taxid;
                         };
 
                         Some((file, taxid))
                     }
                     Err(e) => {
+                        error!("error encountered while parsing fasta file {:?}", file);
                         error!("{:?}", e);
-                        warn!(
-                            "previous error found while parsing fasta file at {:?}. skipping...",
-                            file
-                        );
+                        warn!("skipping...");
                         None
                     }
                 },

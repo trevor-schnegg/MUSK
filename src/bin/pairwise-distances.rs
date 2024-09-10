@@ -9,27 +9,26 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use tracing::info;
 
-/// Computes the lower triangle of a pairwise distance matrix from the input sequences (or sequence groups)
+const CANONICAL: bool = true;
+
+/// Computes the lower triangle of a pairwise distance matrix from the input file2taxid
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, action)]
-    /// Flag that specifies whether or not to use canonical kmers
-    canonical: bool,
-
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// The location of the output
-    /// If a file, an extension is added
-    /// If a directory, the normal extension is the file name
+    /// Where to write the output
+    /// If a file, '.musk.pd' is added
+    /// If a directory, 'musk.pd' will be the file name
+    /// Name means: musk, (p)airwise (d)istances
     output_location: String,
 
     #[arg()]
-    /// the file2taxid file
+    /// The file2taxid map file
     file2taxid: String,
 
     #[arg()]
@@ -48,48 +47,27 @@ fn main() {
     let output_loc_path = Path::new(&args.output_location);
     let ref_dir_path = Path::new(&args.reference_directory);
 
-    // If the file2taxid is grouped and canonical was used, override command line to use canonical
-    // Otherwise, use the argument from the command line
-    let canonical = if file2taxid_path
-        .file_name()
-        .expect("provided file2taxid is not a file")
-        .to_str()
-        .unwrap()
-        .contains(".c.")
-    {
-        true
-    } else {
-        args.canonical
-    };
-
-    info!("use canonical k-mers: {}", canonical);
-
     // Create the output file
-    let output_file = if canonical {
-        create_output_file(output_loc_path, "musk.c.pd")
-    } else {
-        create_output_file(output_loc_path, "musk.pd")
-    };
+    let output_file = create_output_file(output_loc_path, "musk.pd");
 
-    info!("loading files2taxid at {}", args.file2taxid);
-
+    info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid = load_string2taxid(file2taxid_path);
 
     info!(
         "{} groups total, creating roaring bitmaps for each group...",
         file2taxid.len()
     );
-
     let bitmaps = file2taxid
         .par_iter()
         .progress()
         .map(|(files, _taxid)| {
+            // Split the files up if they are grouped
             let file_paths = files
                 .split("$")
                 .map(|file| ref_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(file_paths, kmer_len, canonical)
+            create_bitmap(file_paths, kmer_len, CANONICAL)
         })
         .collect::<Vec<RoaringBitmap>>();
 
@@ -117,7 +95,6 @@ fn main() {
         .collect::<Vec<Vec<u32>>>();
 
     info!("distance matrix completed! outputting to file...");
-
     dump_data_to_file(&(distances, file2taxid), output_file)
         .expect("could not output distances to file");
 

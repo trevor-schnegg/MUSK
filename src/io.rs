@@ -14,7 +14,7 @@ pub fn create_output_file(path: &Path, extension: &str) -> File {
         path.with_extension(extension)
     };
 
-    info!("creating file {:?}", file_path);
+    info!("creating output file {:?}", file_path);
 
     File::create(file_path).expect("could not create output file")
 }

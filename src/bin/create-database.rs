@@ -11,15 +11,13 @@ use std::cmp::min;
 use std::path::Path;
 use tracing::info;
 
+const CANONICAL: bool = true;
+
 /// Creates a run length encoding database
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, action)]
-    /// Flag that specifies whether or not to use canonical kmers
-    canonical: bool,
-
     #[arg(short, long)]
     /// Level of compression. If not supplied no lossy compression is used.
     /// Otherwise, 1 for minimal, 2 for medium, and 3 for heavy compression
@@ -30,18 +28,15 @@ struct Args {
     kmer_length: usize,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// The location of the output
-    /// If a file, an extension is added
-    /// If a directory, the normal extension is the file name
+    /// Where to write the output
+    /// If a file, '.musk.db' is added
+    /// If a directory, 'musk.db' will be the file name
+    /// Name means: musk, (d)ata(b)ase
     output_location: String,
 
-    #[arg(short, long, default_value_t = 150)]
-    /// Number of queries to sample
-    query_number: u64,
-
     #[arg()]
-    /// The ordered file2taxid of the sequences
-    ordering_file: String,
+    /// The (preferrably ordered) file2taxid map
+    file2taxid: String,
 
     #[arg()]
     /// Directory with fasta files to create reference from
@@ -55,58 +50,41 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let kmer_len = args.kmer_length;
-    let ordering_file_path = Path::new(&args.ordering_file);
+    let file2taxid_path = Path::new(&args.file2taxid);
     let output_loc_path = Path::new(&args.output_location);
     let ref_dir_path = Path::new(&args.reference_directory);
     let compresssion_level = args.compression_level;
-
-    // If canonical was used for the file2taxid, override command line to use canonical
-    // Otherwise, use the argument from the command line
-    let canonical = if ordering_file_path
-        .file_name()
-        .expect("provided file2taxid is not a file")
-        .to_str()
-        .unwrap()
-        .contains(".c.")
-    {
-        true
-    } else {
-        args.canonical
-    };
 
     // Create the output file so it errors if an incorrect output file is provided before computation
     let output_file = create_output_file(output_loc_path, "musk.db");
 
     // Load the file2taxid ordering
-    let file2taxid_ordering = load_string2taxid(ordering_file_path);
+    info!("loading file2taxid at {}", args.file2taxid);
+    let file2taxid_ordering = load_string2taxid(file2taxid_path);
 
     info!("creating roaring bitmaps for each group...");
-
     let bitmaps = file2taxid_ordering
         .par_iter()
         .progress()
         .map(|(files, _taxid)| {
+            // Split the files up if they are grouped
             let file_paths = files
                 .split("$")
                 .map(|file| ref_dir_path.join(file))
                 .collect_vec();
 
-            create_bitmap(file_paths, kmer_len, canonical)
+            create_bitmap(file_paths, kmer_len, CANONICAL)
         })
         .collect::<Vec<RoaringBitmap>>();
 
     info!("roaring bitmaps created! constructing database...");
+    let mut database = Database::from(bitmaps, CANONICAL, file2taxid_ordering, kmer_len);
 
-    let mut database = Database::from(bitmaps, canonical, file2taxid_ordering, kmer_len);
-
-    match compresssion_level {
-        None => {}
-        Some(compression_level) => {
-            if compression_level >= 1 {
-                database.lossy_compression(min(compression_level, 3));
-            }
+    if let Some(comp_level) = compresssion_level {
+        if comp_level >= 1 {
+            database.lossy_compression(min(comp_level, 3));
         }
-    }
+    };
 
     dump_data_to_file(&database, output_file).expect("could not output database to file");
 
