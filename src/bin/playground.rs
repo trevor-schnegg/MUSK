@@ -1,8 +1,5 @@
-use musk::{kmer_iter::KmerIter, rle::Run, tracing::start_musk_tracing_subscriber};
-
-use itertools::Itertools;
-use musk::rle::NaiveRunLengthEncoding;
-use tracing::{debug, error, info, warn};
+use musk::io::{create_output_file, dump_data_to_file, load_data_from_file};
+use std::path::Path;
 
 // const CLEAR_BITS: usize = 2_usize.pow((14 * 2) as u32) - 1;
 
@@ -21,53 +18,23 @@ use tracing::{debug, error, info, warn};
 // }
 
 fn main() {
-    start_musk_tracing_subscriber();
+    // start_musk_tracing_subscriber();
 
-    debug!("This should be captured only by stdout");
-    info!("This should be captured only by stdout");
-    warn!("This should be captured only by stderr");
-    error!("This should be captured only by stderr");
+    // debug!("This should be captured only by stdout");
+    // info!("This should be captured only by stdout");
+    // warn!("This should be captured only by stderr");
+    // error!("This should be captured only by stderr");
 
-    let underflow = usize::MAX.overflowing_add(1);
-    println!("{:?}", underflow);
+    let create = false;
+    let file_path = Path::new("./test");
 
-    let seq = "ATGCTGA".as_bytes();
-    let mut seq_iter = KmerIter::from(seq, 3, false);
-    while let Some(kmer) = seq_iter.next() {
-        println!("{:06b}", kmer);
-        let (forward_kmer, rev_comp_kmer) = seq_iter.get_curr_kmers();
-        println!(
-            "kmer: {:06b}, rev comp kmer: {:06b}",
-            forward_kmer, rev_comp_kmer
-        );
-    }
-
-    let _maximum = (1_usize << 14) - 1;
-
-    let mut bits_set = (5_usize..50_usize).into_iter().collect_vec();
-    let added_vec: Vec<usize> = vec![55, 58, 60, 64, 65, 66, 80, 120];
-    for n in added_vec {
-        bits_set.push(n);
-    }
-
-    let mut build_rle_1 = NaiveRunLengthEncoding::new();
-    for int in &bits_set {
-        build_rle_1.push(*int);
-    }
-    let rle_1 = build_rle_1.to_rle();
-
-    println!(
-        "{:?}",
-        rle_1
-            .get_raw_runs()
-            .into_iter()
-            .map(|x| Run::from_u16(*x))
-            .collect_vec()
-    );
-
-    let bits_set_iter = bits_set.into_iter();
-    let rle_iter = rle_1.iter();
-    for (x, y) in bits_set_iter.zip(rle_iter) {
-        assert_eq!(x, y);
+    if create {
+        let test: Box<[Box<[u16]>]> =
+            vec![vec![0].into_boxed_slice(); 4_usize.pow(14)].into_boxed_slice();
+        let file = create_output_file(file_path, "ser");
+        dump_data_to_file(&test, file).unwrap();
+    } else {
+        let file = file_path.with_extension("ser");
+        let _vec = load_data_from_file::<Box<[Box<[u16]>]>>(&file);
     }
 }
