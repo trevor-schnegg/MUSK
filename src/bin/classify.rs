@@ -16,21 +16,11 @@ use tracing::{info, warn};
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, action)]
-    /// Flag that specifies whether or not to use canonical kmers
-    /// If canonical kmers are used, each read will only be queried once
-    /// Otherwise, the forward and reverse complement will be queried
-    canonical: bool,
-
     #[arg(short, long, default_value_t = 12)]
     /// The exponent e for the significance of hits
     /// Used in the equation 10^{-e} to determine statistical significance
     /// MUST be lower than the cutoff provided for database construction
     exp_cutoff: i32,
-
-    #[arg(short, long, default_value_t = 14)]
-    /// Length of k-mer in the database
-    kmer_length: usize,
 
     #[arg(short, long, default_value_t = 100)]
     // The maximum number of queries to use in the binomial function
@@ -70,13 +60,10 @@ fn main() {
     let writer = Mutex::new(BufWriter::new(output_file));
 
     info!("loading database at {:?}", database_path);
-
     let database = load_data_from_file::<Database>(database_path);
 
-    info!("database loaded! classifying reads...");
-
+    info!("classifying reads...");
     let read_iter = get_fastq_iter_of_file(reads_path);
-
     read_iter
         .par_bridge()
         .into_par_iter()

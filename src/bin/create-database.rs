@@ -18,11 +18,6 @@ const CANONICAL: bool = true;
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long)]
-    /// Level of compression. If not supplied no lossy compression is used.
-    /// Otherwise, 1 for minimal, 2 for medium, and 3 for heavy compression
-    compression_level: Option<usize>,
-
     #[arg(short, long, default_value_t = 14)]
     /// Length of k-mer to use in the database
     kmer_length: usize,
@@ -53,7 +48,6 @@ fn main() {
     let file2taxid_path = Path::new(&args.file2taxid);
     let output_loc_path = Path::new(&args.output_location);
     let ref_dir_path = Path::new(&args.reference_directory);
-    let compresssion_level = args.compression_level;
 
     // Create the output file so it errors if an incorrect output file is provided before computation
     let output_file = create_output_file(output_loc_path, "musk.db");
@@ -77,15 +71,10 @@ fn main() {
         })
         .collect::<Vec<RoaringBitmap>>();
 
-    info!("roaring bitmaps created! constructing database...");
-    let mut database = Database::from(bitmaps, CANONICAL, file2taxid_ordering, kmer_len);
+    info!("constructing database...");
+    let database = Database::from(bitmaps, CANONICAL, file2taxid_ordering, kmer_len);
 
-    if let Some(comp_level) = compresssion_level {
-        if comp_level >= 1 {
-            database.lossy_compression(min(comp_level, 3));
-        }
-    };
-
+    info!("dumping to file...");
     dump_data_to_file(&database, output_file).expect("could not output database to file");
 
     info!("done!");
