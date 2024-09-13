@@ -297,6 +297,7 @@ impl Database {
                 } else {
                     ((n_hits as f64 / n_total as f64) * n_max as f64).round() as u64
                 };
+
                 let n = if n_total <= n_max { n_total } else { n_max };
 
                 // This check saves runtime in practice
@@ -304,6 +305,7 @@ impl Database {
                 if x as f64 > (n as f64 * p) {
                     // Perform the computation using f64
                     let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
+
                     // If the probability is greater than 0.0, use it
                     let prob_big_exp = if prob_f64 > 0.0 {
                         BigExpFloat::from_f64(prob_f64)
@@ -311,6 +313,7 @@ impl Database {
                         // Otherwise, compute the probability using big exp
                         sf(*p, n, x, &self.consts)
                     };
+
                     Some((index, prob_big_exp))
                 } else {
                     // If there were less than a significant number of hits, don't compute
