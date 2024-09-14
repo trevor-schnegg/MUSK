@@ -139,16 +139,21 @@ impl RunLengthEncoding {
     }
 
     pub fn from(blocks: Vec<u16>) -> RunLengthEncoding {
+        let original_blocks_size = blocks.len();
+        let boxed_blocks = blocks.into_boxed_slice();
+        assert_eq!(original_blocks_size, boxed_blocks.len());
         RunLengthEncoding {
-            blocks: blocks.into_boxed_slice(),
+            blocks: boxed_blocks,
         }
     }
 
     fn compress_from(runs: Vec<u16>) -> Self {
         // The compressed vector that composes the new run length encoding
         let mut compressed_blocks = vec![];
+
         // A buffer that represents a bit set of at most MAX_UNCOMPRESSED_BITS
         let mut bits_buffer = vec![];
+
         // A variable to store the current number of bits in the buffer
         // This is NOT equal to the length of the buffer
         let mut num_bits_in_buffer = 0_usize;
@@ -168,7 +173,7 @@ impl RunLengthEncoding {
             } else if num_bits_in_buffer + run_bits == MAX_UNCOMPRESSED_BITS {
                 // If this run is added the buffer will be exactly at capacity
 
-                // If the buffer started as empty, there is no advantage to storing this run as uncompressed
+                // If the buffer started as empty, there is no advantage (or disadvantage) to storing this run as uncompressed
                 // Therefore, this is done for code simplicity and nothing else
                 bits_buffer.push(run);
                 let decompressed_run = decompress_buffer(&mut bits_buffer);
@@ -230,13 +235,15 @@ impl RunLengthEncoding {
             compressed_blocks.push(decompress_buffer(&mut bits_buffer))
         }
 
-        RunLengthEncoding {
-            blocks: compressed_blocks
-                .into_iter()
-                .map(|run| run.to_u16())
-                .collect_vec()
-                .into_boxed_slice(),
-        }
+        let original_compressed_size = compressed_blocks.len();
+        let blocks = compressed_blocks
+            .into_iter()
+            .map(|run| run.to_u16())
+            .collect_vec()
+            .into_boxed_slice();
+        assert_eq!(original_compressed_size, blocks.len());
+
+        RunLengthEncoding { blocks }
     }
 }
 
@@ -267,10 +274,10 @@ pub struct RunLengthEncodingIter<'a> {
 }
 
 impl<'a> RunLengthEncodingIter<'a> {
-    pub fn from_blocks(runs: &'a Box<[u16]>) -> Self {
+    pub fn from_blocks(blocks: &'a Box<[u16]>) -> Self {
         RunLengthEncodingIter {
             curr_i: 0,
-            raw_blocks_iter: runs.iter(),
+            raw_blocks_iter: blocks.iter(),
             curr_block_iter: Box::new(0..0),
         }
     }

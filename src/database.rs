@@ -50,7 +50,7 @@ impl Database {
 
         // Log information about the number of naive runs
         let naive_run_num = naive_kmer_rles
-            .iter()
+            .par_iter()
             .map(|naive_rle| naive_rle.get_raw_runs().len())
             .sum::<usize>();
         debug!("number of naive rle runs: {}", naive_run_num);
@@ -64,7 +64,7 @@ impl Database {
 
         // Log information about the number of compressed runs
         let compressed_block_num = kmer_rles
-            .iter()
+            .par_iter()
             .map(|rle| rle.get_raw_blocks().len())
             .sum::<usize>();
         debug!("number of compressed rle runs: {}", compressed_block_num);
