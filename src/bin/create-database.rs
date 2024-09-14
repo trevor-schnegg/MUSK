@@ -8,8 +8,7 @@ use musk::utility::create_bitmap;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use std::path::Path;
-use std::process::exit;
-use tracing::{debug, info};
+use tracing::info;
 
 const CANONICAL: bool = true;
 
@@ -55,10 +54,6 @@ fn main() {
     // Load the file2taxid ordering
     info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid_ordering = load_string2taxid(file2taxid_path);
-
-    debug!("{:?}", file2taxid_ordering);
-
-    exit(1);
 
     info!("creating roaring bitmaps for each group...");
     let bitmaps = file2taxid_ordering
