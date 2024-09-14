@@ -258,7 +258,7 @@ impl Database {
 
         let mut file2kmer_num = vec![0_usize; self.file2taxid.len()];
 
-        for rle in &self.kmer_rles {
+        for rle in self.kmer_rles.iter() {
             for kmer in rle.iter() {
                 file2kmer_num[kmer] += 1;
             }
