@@ -62,4 +62,6 @@ fn main() {
             .write(format!("{}\t{}\n", *files_string, *taxid).as_bytes())
             .expect("could not write to output file");
     }
+
+    output_file.flush().unwrap();
 }

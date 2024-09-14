@@ -107,4 +107,6 @@ fn main() {
             )
             .expect("could not write to output file");
     }
+
+    output_file.flush().unwrap();
 }

@@ -120,7 +120,7 @@ impl NaiveRunLengthEncoding {
             self.runs.push(Block::Ones(1).to_u16());
         }
 
-        // Finally, before ended, set the highest index as the index we just inserted
+        // Before ending the insert, set the highest index
         self.highest_index = index;
     }
 
