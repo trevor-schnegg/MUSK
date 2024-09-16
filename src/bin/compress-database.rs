@@ -22,7 +22,7 @@ struct Args {
     compression_level: usize,
 
     #[arg()]
-    /// The uncomrpessed database file
+    /// The uncompressed database file
     database: String,
 }
 
