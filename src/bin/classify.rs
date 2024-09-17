@@ -32,10 +32,6 @@ struct Args {
     /// If a directory, the normal extension is the file name
     output_location: String,
 
-    #[arg(short, long, default_value_t = 12)]
-    /// Number of threads to use in classification
-    thread_number: usize,
-
     #[arg()]
     /// The database file
     database: String,
@@ -73,11 +69,21 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let taxid = database.classify(record.seq(), cutoff_threshold, args.max_queries);
+                let classification =
+                    database.classify(record.seq(), cutoff_threshold, args.max_queries);
                 let mut writer = writer.lock().unwrap();
-                writer
-                    .write(format!("{}\t{}\n", record.id(), taxid).as_bytes())
-                    .expect("could not write to output file");
+                match classification {
+                    Some((file, taxid)) => {
+                        writer
+                            .write(format!("{}\t{}\t{}\n", record.id(), file, taxid).as_bytes())
+                            .expect("could not write to output file");
+                    }
+                    None => {
+                        writer
+                            .write(format!("{}\tNA\t0\n", record.id()).as_bytes())
+                            .expect("could not write to output file");
+                    }
+                };
             }
         });
 

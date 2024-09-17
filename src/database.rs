@@ -272,7 +272,12 @@ impl Database {
         self.p_values = p_values;
     }
 
-    pub fn classify(&self, read: &[u8], cutoff_threshold: BigExpFloat, n_max: u64) -> usize {
+    pub fn classify(
+        &self,
+        read: &[u8],
+        cutoff_threshold: BigExpFloat,
+        n_max: u64,
+    ) -> Option<&(String, usize)> {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
@@ -329,9 +334,9 @@ impl Database {
         }
 
         if lowest_prob < cutoff_threshold {
-            self.file2taxid[lowest_prob_index].1
+            Some(&self.file2taxid[lowest_prob_index])
         } else {
-            0
+            None
         }
     }
 }
