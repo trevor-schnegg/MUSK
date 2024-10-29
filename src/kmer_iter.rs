@@ -1,11 +1,23 @@
 use std::cmp::min;
-use std::collections::HashMap;
 use std::slice::Iter;
 
 const COMPLEMENT: [usize; 4] = [3, 2, 1, 0];
 
+fn base2int(base: u8) -> usize {
+    if base == b'A' || base == b'a' {
+        0
+    } else if base == b'C' || base == b'c' {
+        1
+    } else if base == b'G' || base == b'g' {
+        2
+    } else if base == b'T' || base == b't' {
+        3
+    } else {
+        4
+    }
+}
+
 pub struct KmerIter<'a> {
-    base2int: HashMap<u8, usize>,
     canonical: bool,
     char_iter: Iter<'a, u8>,
     clear_bits: usize,
@@ -18,18 +30,7 @@ pub struct KmerIter<'a> {
 
 impl<'a> KmerIter<'a> {
     pub fn from(sequence: &'a [u8], kmer_length: usize, canonical: bool) -> Self {
-        let base2int = HashMap::from([
-            (b'A', 0_usize),
-            (b'a', 0_usize),
-            (b'C', 1_usize),
-            (b'c', 1_usize),
-            (b'G', 2_usize),
-            (b'g', 2_usize),
-            (b'T', 3_usize),
-            (b't', 3_usize),
-        ]);
         KmerIter {
-            base2int,
             canonical,
             char_iter: sequence.iter(),
             clear_bits: 2_usize.pow((kmer_length * 2) as u32) - 1,
@@ -49,18 +50,16 @@ impl<'a> KmerIter<'a> {
                 None => {
                     return None;
                 }
-                Some(c) => {
-                    match self.base2int.get(c) {
-                        None => {
-                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                            buffer = 0;
-                            position = 0;
-                        }
-                        Some(i) => {
-                            buffer <<= 2;
-                            buffer |= *i;
-                            position += 1;
-                        }
+                Some(char) => {
+                    let bit_representation = base2int(*char);
+                    if bit_representation < 4 {
+                        buffer <<= 2;
+                        buffer |= bit_representation;
+                        position += 1;
+                    } else {
+                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                        buffer = 0;
+                        position = 0;
                     }
                 }
             }
@@ -106,27 +105,25 @@ impl<'a> Iterator for KmerIter<'a> {
                 None => {
                     return None;
                 }
-                Some(character) => {
-                    match self.base2int.get(character) {
-                        None => {
-                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                            self.find_next_kmer()
-                        }
-                        Some(integer) => {
-                            self.curr_kmer <<= 2;
-                            self.curr_kmer |= *integer;
-                            self.curr_kmer &= self.clear_bits;
+                Some(char) => {
+                    let bit_representation = base2int(*char);
+                    if bit_representation < 4 {
+                        self.curr_kmer <<= 2;
+                        self.curr_kmer |= bit_representation;
+                        self.curr_kmer &= self.clear_bits;
 
-                            self.curr_rev_comp_kmer >>= 2;
-                            self.curr_rev_comp_kmer |=
-                                COMPLEMENT[*integer] << self.first_letter_shift;
+                        self.curr_rev_comp_kmer >>= 2;
+                        self.curr_rev_comp_kmer |=
+                            COMPLEMENT[bit_representation] << self.first_letter_shift;
 
-                            if self.canonical {
-                                Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
-                            } else {
-                                Some(self.curr_kmer)
-                            }
+                        if self.canonical {
+                            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+                        } else {
+                            Some(self.curr_kmer)
                         }
+                    } else {
+                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                        self.find_next_kmer()
                     }
                 }
             }

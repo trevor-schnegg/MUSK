@@ -91,40 +91,6 @@ pub fn reverse_complement(sequence: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-pub fn two_bit_dna_representation(c: &u8) -> Option<usize> {
-    if *c == b'A' || *c == b'a' {
-        // binary is 00
-        Some(0)
-    } else if *c == b'C' || *c == b'c' {
-        // binary is 01
-        Some(1)
-    } else if *c == b'G' || *c == b'g' {
-        // binary is 10
-        Some(2)
-    } else if *c == b'T' || *c == b't' {
-        // binary is 11
-        Some(3)
-    } else {
-        return None;
-    }
-}
-
-pub fn compressed_representation(kmer: &[u8]) -> Option<usize> {
-    let mut num = 0_usize;
-    for c in kmer.iter() {
-        num <<= 2;
-        match two_bit_dna_representation(c) {
-            None => {
-                return None;
-            }
-            Some(n) => {
-                num |= n;
-            }
-        }
-    }
-    Some(num)
-}
-
 pub fn get_range(kmer_length: usize, log_blocks: u32, block_index: usize) -> (usize, usize) {
     let n_blocks = 2_usize.pow(log_blocks);
     if block_index >= n_blocks {
