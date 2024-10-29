@@ -1,8 +1,8 @@
 use clap::Parser;
 use musk::{
     io::{create_output_file, load_data_from_file},
+    order::{greedy_ordering, ordering_statistics},
     tracing::start_musk_tracing_subscriber,
-    utility::{greedy_ordering, ordering_statistics},
 };
 use std::{
     io::{BufWriter, Write},

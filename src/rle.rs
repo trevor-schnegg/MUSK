@@ -1,7 +1,7 @@
 use bit_iter::BitIter;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::slice::Iter;
+use std::vec::IntoIter;
 use tracing::warn;
 
 pub const MAX_RUN: u16 = (1 << 14) - 1;
@@ -269,7 +269,7 @@ fn decompress_buffer(buffer: &mut Vec<Block>) -> Block {
 
 pub struct RunLengthEncodingIter<'a> {
     curr_i: usize,
-    raw_blocks_iter: Iter<'a, u16>,
+    blocks_iter: IntoIter<Block>,
     curr_block_iter: Box<dyn Iterator<Item = usize> + 'a>,
 }
 
@@ -277,7 +277,11 @@ impl<'a> RunLengthEncodingIter<'a> {
     pub fn from_blocks(blocks: &'a Box<[u16]>) -> Self {
         RunLengthEncodingIter {
             curr_i: 0,
-            raw_blocks_iter: blocks.iter(),
+            blocks_iter: blocks
+                .iter()
+                .map(|block| Block::from_u16(*block))
+                .collect_vec()
+                .into_iter(),
             curr_block_iter: Box::new(0..0),
         }
     }
@@ -294,8 +298,8 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
             }
             None => {
                 // Otherwise, look for a new run to iterate over
-                while let Some(run) = self.raw_blocks_iter.next() {
-                    match Block::from_u16(*run) {
+                while let Some(run) = self.blocks_iter.next() {
+                    match run {
                         Block::Zeros(count) => {
                             // If the run is zeros, add it to curr_i and look for the next run
                             self.curr_i += count as usize;

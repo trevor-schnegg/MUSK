@@ -1,6 +1,6 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
-use musk::explore::connected_components;
+use musk::group::connected_components;
 use musk::io::{create_output_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
