@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use indicatif::ProgressIterator;
 use itertools::Itertools;
 use num_traits::One;
@@ -21,7 +23,7 @@ pub struct Database {
     consts: Consts,
     file2taxid: Vec<(String, usize)>,
     kmer_len: usize,
-    kmer_rles: Box<[RunLengthEncoding]>,
+    kmer_rles: HashMap<u32, RunLengthEncoding>,
     p_values: Vec<f64>,
 }
 
@@ -39,33 +41,42 @@ impl Database {
             .map(|bitmap| bitmap.len() as f64 / total_num_kmers as f64)
             .collect::<Vec<f64>>();
 
-        let mut naive_kmer_rles = vec![NaiveRunLengthEncoding::new(); total_num_kmers];
+        let mut naive_kmer_rles: HashMap<u32, NaiveRunLengthEncoding> = HashMap::new();
         info!("constructing naive runs...");
         // Insert all indicies into the kmer runs
         for (index, bitmap) in bitmaps.into_iter().progress().enumerate() {
             for kmer in bitmap {
-                naive_kmer_rles[kmer as usize].push(index);
+                match naive_kmer_rles.get_mut(&kmer) {
+                    Some(naive_rle) => naive_rle.push(index),
+                    None => {
+                        let mut new_naive_rle = NaiveRunLengthEncoding::new();
+                        new_naive_rle.push(index);
+                        naive_kmer_rles.insert(kmer, new_naive_rle);
+                    }
+                }
             }
         }
 
         // Log information about the number of naive runs
         let naive_run_num = naive_kmer_rles
             .par_iter()
-            .map(|naive_rle| naive_rle.get_raw_runs().len())
+            .map(|(_kmer, naive_rle)| naive_rle.get_raw_runs().len())
             .sum::<usize>();
         debug!("number of naive rle runs: {}", naive_run_num);
 
         info!("naive runs constructed! compressing...");
         // Compress the database using uncompressed bit sets
-        let kmer_rles = naive_kmer_rles
+        // Process in parallel and then insert into a new hashmap
+        let kmer_rles_vec = naive_kmer_rles
             .into_par_iter()
-            .map(|naive_rle| naive_rle.to_rle())
-            .collect::<Box<[RunLengthEncoding]>>();
+            .map(|(kmer, naive_rle)| (kmer, naive_rle.to_rle()))
+            .collect::<Vec<(u32, RunLengthEncoding)>>();
+        let kmer_rles = HashMap::from_iter(kmer_rles_vec.into_iter());
 
         // Log information about the number of compressed runs
         let compressed_block_num = kmer_rles
             .par_iter()
-            .map(|rle| rle.get_raw_blocks().len())
+            .map(|(_kmer, rle)| rle.get_raw_blocks().len())
             .sum::<usize>();
         debug!("number of compressed rle runs: {}", compressed_block_num);
 
@@ -104,19 +115,18 @@ impl Database {
             "total set bits before compression {}",
             self.kmer_rles
                 .par_iter()
-                .map(|rle| rle.iter().count())
+                .map(|(_kmer, rle)| rle.iter().count())
                 .sum::<usize>()
         );
 
-        self.kmer_rles = self
-            .kmer_rles
-            .par_iter()
-            .map(|current_blocks| {
+        self.kmer_rles
+            .par_iter_mut()
+            .for_each(|(_kmer, current_rle)| {
                 // variable to hold the new lossy compressed blocks as u16s
                 let mut compressed_blocks = vec![];
 
                 // peekable iterator over the current runs
-                let mut block_iter = current_blocks
+                let mut block_iter = current_rle
                     .get_raw_blocks()
                     .into_iter()
                     .map(|block| Block::from_u16(*block))
@@ -142,13 +152,13 @@ impl Database {
                                 }
                                 (Some(length), None) => {
                                     // try to merge with the previous
-                                    let run_reduction =
+                                    let blocks_saved =
                                         if length + MAX_UNCOMPRESSED_BITS <= MAX_RUN as usize {
                                             1
                                         } else {
                                             0
                                         };
-                                    if should_compress(compression_level, set_bits, run_reduction) {
+                                    if should_compress(compression_level, set_bits, blocks_saved) {
                                         match compressed_blocks.last_mut().unwrap() {
                                             // intentionally overloading the variable `length` because they are the same thing
                                             Block::Zeros(length) => {
@@ -163,13 +173,13 @@ impl Database {
                                 }
                                 (None, Some(length)) => {
                                     // try to merge with the next
-                                    let run_reduction =
+                                    let blocks_saved =
                                         if length + MAX_UNCOMPRESSED_BITS <= MAX_RUN as usize {
                                             1
                                         } else {
                                             0
                                         };
-                                    if should_compress(compression_level, set_bits, run_reduction) {
+                                    if should_compress(compression_level, set_bits, blocks_saved) {
                                         // get/burn the next run in the iterator which should be zeros
                                         match block_iter.next().unwrap() {
                                             // intentionally overloading the variable `length` because they are the same thing
@@ -187,14 +197,14 @@ impl Database {
                                     // try to merge with both
                                     let total_length =
                                         prev_length + MAX_UNCOMPRESSED_BITS + next_length;
-                                    let run_reduction = if total_length <= MAX_RUN as usize {
+                                    let blocks_saved = if total_length <= MAX_RUN as usize {
                                         2
                                     } else if total_length <= (MAX_RUN as usize) * 2 {
                                         1
                                     } else {
                                         0
                                     };
-                                    if should_compress(compression_level, set_bits, run_reduction) {
+                                    if should_compress(compression_level, set_bits, blocks_saved) {
                                         match (
                                             compressed_blocks.last_mut().unwrap(),
                                             block_iter.next().unwrap(),
@@ -232,20 +242,22 @@ impl Database {
                     } // end match
                 } // end while
 
-                RunLengthEncoding::from(
+                // At this point, we have created the variable `compressed_blocks` with the lossy compressed blocks in it
+                // We can then just update the original rle to the new lossy compressed blocks
+
+                *current_rle = RunLengthEncoding::from(
                     compressed_blocks
                         .into_iter()
                         .map(|run| run.to_u16())
                         .collect_vec(),
-                )
-            })
-            .collect::<Box<[RunLengthEncoding]>>();
+                );
+            }); // end mut for each
 
         info!(
             "total set bits after compression {}",
             self.kmer_rles
                 .par_iter()
-                .map(|rle| rle.iter().count())
+                .map(|(_kmer, rle)| rle.iter().count())
                 .sum::<usize>()
         );
 
@@ -258,7 +270,7 @@ impl Database {
 
         let mut file2kmer_num = vec![0_usize; self.file2taxid.len()];
 
-        for rle in self.kmer_rles.iter() {
+        for (_kmer, rle) in self.kmer_rles.iter() {
             for kmer in rle.iter() {
                 file2kmer_num[kmer] += 1;
             }
@@ -281,12 +293,16 @@ impl Database {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
-        let mut n_total = 0;
-        for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
-            for sequence in self.kmer_rles[kmer].iter() {
-                collected_hits[sequence] += 1;
+        let read_kmers = KmerIter::from(read, self.kmer_len, self.canonical)
+            .map(|kmer| kmer as u32)
+            .collect_vec();
+        let n_total = read_kmers.len() as u64;
+        for kmer in read_kmers.into_iter() {
+            if let Some(rle) = self.kmer_rles.get(&kmer) {
+                for sequence in rle.iter() {
+                    collected_hits[sequence] += 1;
+                }
             }
-            n_total += 1;
         }
 
         // Classify the hits

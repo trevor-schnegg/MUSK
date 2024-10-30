@@ -72,7 +72,13 @@ fn main() {
                 }
                 Some(record_result) => match record_result {
                     Ok(record) => {
-                        let mut taxid = accession2taxid[record.id()];
+                        let mut taxid = accession2taxid
+                            .get(record.id())
+                            .expect(&*format!(
+                                "record id {} not in the provided accession2taxid",
+                                record.id(),
+                            ))
+                            .clone();
 
                         // Try to move the taxid up to the species level, if possible
                         if let Ok(Some((species_taxid, _distance))) =

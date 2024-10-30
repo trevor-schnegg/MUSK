@@ -139,11 +139,8 @@ impl RunLengthEncoding {
     }
 
     pub fn from(blocks: Vec<u16>) -> RunLengthEncoding {
-        let original_blocks_size = blocks.len();
-        let boxed_blocks = blocks.into_boxed_slice();
-        assert_eq!(original_blocks_size, boxed_blocks.len());
         RunLengthEncoding {
-            blocks: boxed_blocks,
+            blocks: blocks.into_boxed_slice(),
         }
     }
 
@@ -267,13 +264,13 @@ fn decompress_buffer(buffer: &mut Vec<Block>) -> Block {
     Block::Uncompressed(decompressed)
 }
 
-pub struct RunLengthEncodingIter<'a> {
+pub struct RunLengthEncodingIter {
     curr_i: usize,
     blocks_iter: IntoIter<Block>,
-    curr_block_iter: Box<dyn Iterator<Item = usize> + 'a>,
+    curr_block_iter: IntoIter<usize>,
 }
 
-impl<'a> RunLengthEncodingIter<'a> {
+impl<'a> RunLengthEncodingIter {
     pub fn from_blocks(blocks: &'a Box<[u16]>) -> Self {
         RunLengthEncodingIter {
             curr_i: 0,
@@ -282,40 +279,38 @@ impl<'a> RunLengthEncodingIter<'a> {
                 .map(|block| Block::from_u16(*block))
                 .collect_vec()
                 .into_iter(),
-            curr_block_iter: Box::new(0..0),
+            curr_block_iter: (0..0).collect_vec().into_iter(),
         }
     }
 }
 
-impl<'a> Iterator for RunLengthEncodingIter<'a> {
+impl<'a> Iterator for RunLengthEncodingIter {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.curr_block_iter.next() {
-            Some(n) => {
-                // If the current run has a value, return it
-                Some(n)
-            }
             None => {
-                // Otherwise, look for a new run to iterate over
+                // Current block doesn't have any more to iterate - look for a new block
                 while let Some(run) = self.blocks_iter.next() {
                     match run {
-                        Block::Zeros(count) => {
+                        Block::Zeros(zeros_count) => {
                             // If the run is zeros, add it to curr_i and look for the next run
-                            self.curr_i += count as usize;
+                            self.curr_i += zeros_count as usize;
                         }
-                        Block::Ones(count) => {
+                        Block::Ones(ones_count) => {
                             // If the run is ones, create a new curr_run_iter and return the first value
-                            self.curr_block_iter =
-                                Box::new(self.curr_i..self.curr_i + count as usize);
-                            self.curr_i += count as usize;
+                            self.curr_block_iter = (self.curr_i..self.curr_i + ones_count as usize)
+                                .collect_vec()
+                                .into_iter();
+                            self.curr_i += ones_count as usize;
                             return self.curr_block_iter.next();
                         }
                         Block::Uncompressed(bits) => {
                             // If the run is uncompressed, create new curr_run_iter over it and return the first value
                             let curr_i = self.curr_i.clone();
-                            self.curr_block_iter =
-                                Box::new(BitIter::from(bits).map(move |x| x + curr_i));
+                            self.curr_block_iter = (BitIter::from(bits).map(move |x| x + curr_i))
+                                .collect_vec()
+                                .into_iter();
                             self.curr_i += MAX_UNCOMPRESSED_BITS;
                             return self.curr_block_iter.next();
                         }
@@ -324,6 +319,8 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
                 // If a new curr_run_iter cannot be found, return None
                 None
             }
+            // Otherwise, if the current block has a value Some(_), simply return that
+            n => n,
         }
     }
 }

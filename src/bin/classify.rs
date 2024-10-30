@@ -27,9 +27,10 @@ struct Args {
     max_queries: u64,
 
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// The location of the output
-    /// If a file, an extension is added
-    /// If a directory, the normal extension is the file name
+    /// Where to write the output.
+    /// If a file, '.musk.r2t' is added.
+    /// If a directory, 'musk.r2t' will be the file name.
+    /// Name means: musk, (r)ead ID (2) (t)ax ID
     output_location: String,
 
     #[arg()]
