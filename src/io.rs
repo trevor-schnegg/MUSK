@@ -75,11 +75,17 @@ pub fn load_string2taxid(string2taxid: &Path) -> Vec<(String, usize)> {
         .collect_vec()
 }
 
+// Takes a file (already opened) as an input
+// All binaries open files at the start of execution, if needed.
+// All such binaries should error early in execution if an improper path is provided.
 pub fn dump_data_to_file<T: Serialize>(data: &T, file: File) -> bincode::Result<()> {
     let buf_writer = BufWriter::new(file);
     bincode::serialize_into(buf_writer, data)
 }
 
+// Takes a path (not opened) as an input
+// All binaries that need to load data will do so at the start of execution.
+// All such binaries will error here if an improper path is provided.
 pub fn load_data_from_file<T: for<'a> Deserialize<'a>>(path: &Path) -> T {
     let buf_reader =
         BufReader::new(File::open(path).expect(&*format!("could not open file at {:?}", path)));

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use indicatif::ProgressIterator;
 use itertools::Itertools;
 use num_traits::One;
@@ -7,12 +5,14 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
+use std::{collections::HashMap, fs::File, path::Path};
 use tracing::{debug, info};
 
 use crate::{
     big_exp_float::BigExpFloat,
     binomial_sf::sf,
     consts::Consts,
+    io::{dump_data_to_file, load_data_from_file},
     kmer_iter::KmerIter,
     rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
@@ -293,16 +293,14 @@ impl Database {
         let mut collected_hits = vec![0_u64; self.file2taxid.len()];
 
         // Find the hits for all kmers
-        let read_kmers = KmerIter::from(read, self.kmer_len, self.canonical)
-            .map(|kmer| kmer as u32)
-            .collect_vec();
-        let n_total = read_kmers.len() as u64;
-        for kmer in read_kmers.into_iter() {
+        let mut n_total = 0_u64;
+        for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|kmer| kmer as u32) {
             if let Some(rle) = self.kmer_rles.get(&kmer) {
                 for sequence in rle.iter() {
                     collected_hits[sequence] += 1;
                 }
             }
+            n_total += 1;
         }
 
         // Classify the hits
@@ -354,5 +352,21 @@ impl Database {
         } else {
             None
         }
+    }
+
+    pub fn serialize_to(mut self, file: File, metadata_file: File) -> () {
+        dump_data_to_file(&self.kmer_rles, file).unwrap();
+        self.kmer_rles = HashMap::new();
+        dump_data_to_file(&self, metadata_file).unwrap();
+    }
+
+    pub fn deserialize_from(file: &Path, metadata_file: &Path) -> Self {
+        debug!("loading metadata for database");
+        let mut database = load_data_from_file::<Self>(metadata_file);
+        debug!("loading kmer rles for database");
+        let kmer_rles = load_data_from_file::<HashMap<u32, RunLengthEncoding>>(file);
+        debug!("done loading database");
+        database.kmer_rles = kmer_rles;
+        database
     }
 }
