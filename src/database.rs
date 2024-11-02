@@ -1,4 +1,3 @@
-use indicatif::ProgressIterator;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::prelude::*;
@@ -42,20 +41,34 @@ impl Database {
             .collect::<Vec<f64>>();
 
         let mut naive_kmer_rles: HashMap<u32, NaiveRunLengthEncoding> = HashMap::new();
-        info!("constructing naive runs...");
-        // Insert all indicies into the kmer runs
-        for (index, bitmap) in bitmaps.into_iter().progress().enumerate() {
+        // Initialize all present k-mers
+        info!("populating all present kmers in the hashmap");
+        for bitmap in bitmaps.iter() {
             for kmer in bitmap {
-                match naive_kmer_rles.get_mut(&kmer) {
-                    Some(naive_rle) => naive_rle.push(index),
+                match naive_kmer_rles.get(&kmer) {
                     None => {
-                        let mut new_naive_rle = NaiveRunLengthEncoding::new();
-                        new_naive_rle.push(index);
-                        naive_kmer_rles.insert(kmer, new_naive_rle);
+                        naive_kmer_rles.insert(kmer, NaiveRunLengthEncoding::new());
                     }
+                    _ => {}
                 }
             }
         }
+
+        info!("constructing naive runs...");
+        // Create all naive kmer RLEs in parallel
+        naive_kmer_rles.par_iter_mut().for_each(|(kmer, kmer_rle)| {
+            // loop through all bitmaps to find those that the given kmer occurs in
+            for index in bitmaps.iter().enumerate().filter_map(|(i, bitmap)| {
+                if bitmap.contains(*kmer) {
+                    Some(i)
+                } else {
+                    None
+                }
+            }) {
+                // push all indices into the kmer rle
+                kmer_rle.push(index)
+            }
+        });
 
         // Log information about the number of naive runs
         let naive_run_num = naive_kmer_rles
