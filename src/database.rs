@@ -374,9 +374,12 @@ impl Database {
     }
 
     pub fn serialize_to(mut self, file: File, metadata_file: File) -> () {
+        debug!("dumping metadata for database");
         dump_data_to_file(&self.kmer_rles, file).unwrap();
         self.kmer_rles = HashMap::new();
+        debug!("dumping kmer rles for database");
         dump_data_to_file(&self, metadata_file).unwrap();
+        debug!("done dumping database");
     }
 
     pub fn deserialize_from(file: &Path, metadata_file: &Path) -> Self {
