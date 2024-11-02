@@ -20,7 +20,8 @@ use crate::{
 pub struct Database {
     canonical: bool,
     consts: Consts,
-    file2taxid: Vec<(String, usize)>,
+    files: Vec<String>,
+    tax_ids: Vec<usize>,
     kmer_len: usize,
     kmer_rles: HashMap<u32, RunLengthEncoding>,
     p_values: Vec<f64>,
@@ -30,7 +31,8 @@ impl Database {
     pub fn from(
         bitmaps: Vec<RoaringBitmap>,
         canonical: bool,
-        file2taxid: Vec<(String, usize)>,
+        files: Vec<String>,
+        tax_ids: Vec<usize>,
         kmer_len: usize,
     ) -> Self {
         let total_num_kmers = 4_usize.pow(kmer_len as u32);
@@ -96,7 +98,8 @@ impl Database {
         Database {
             canonical,
             consts: Consts::new(),
-            file2taxid,
+            files,
+            tax_ids,
             kmer_len,
             kmer_rles,
             p_values,
@@ -281,7 +284,7 @@ impl Database {
     fn recompute_p_values(&mut self) -> () {
         let total_num_kmers = 4_usize.pow(self.kmer_len as u32) as f64;
 
-        let mut file2kmer_num = vec![0_usize; self.file2taxid.len()];
+        let mut file2kmer_num = vec![0_usize; self.files.len()];
 
         for (_kmer, rle) in self.kmer_rles.iter() {
             for kmer in rle.iter() {
@@ -302,8 +305,8 @@ impl Database {
         read: &[u8],
         cutoff_threshold: BigExpFloat,
         n_max: u64,
-    ) -> Option<&(String, usize)> {
-        let mut collected_hits = vec![0_u64; self.file2taxid.len()];
+    ) -> Option<(&str, usize)> {
+        let mut collected_hits = vec![0_u64; self.files.len()];
 
         // Find the hits for all kmers
         let mut n_total = 0_u64;
@@ -361,7 +364,10 @@ impl Database {
         }
 
         if lowest_prob < cutoff_threshold {
-            Some(&self.file2taxid[lowest_prob_index])
+            Some((
+                &*self.files[lowest_prob_index],
+                self.tax_ids[lowest_prob_index],
+            ))
         } else {
             None
         }

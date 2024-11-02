@@ -55,12 +55,14 @@ fn main() {
     // Load the file2taxid ordering
     info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid_ordering = load_string2taxid(file2taxid_path);
+    let tax_ids = file2taxid_ordering.iter().map(|x| x.1).collect_vec();
+    let files = file2taxid_ordering.into_iter().map(|x| x.0).collect_vec();
 
     info!("creating roaring bitmaps for each group...");
-    let bitmaps = file2taxid_ordering
+    let bitmaps = files
         .par_iter()
         .progress()
-        .map(|(files, _taxid)| {
+        .map(|files| {
             // Split the files up if they are grouped
             let file_paths = files
                 .split("$")
@@ -72,7 +74,7 @@ fn main() {
         .collect::<Vec<RoaringBitmap>>();
 
     info!("constructing database...");
-    let database = Database::from(bitmaps, CANONICAL, file2taxid_ordering, kmer_len);
+    let database = Database::from(bitmaps, CANONICAL, files, tax_ids, kmer_len);
 
     info!("dumping to file...");
     database.serialize_to(output_file, output_metadata_file);
