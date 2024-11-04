@@ -49,8 +49,9 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.exp_cutoff).neg()));
-    let database_path = Path::new(&args.database);
-    let database_metadata_path = database_path.with_extension("meta");
+    let database_base_path = Path::new(&args.database);
+    let database_metadata_path = database_base_path.with_extension("musk.db.meta");
+    let database_path = database_base_path.with_extension("musk.db");
     let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
 
@@ -58,7 +59,7 @@ fn main() {
     let writer = Mutex::new(BufWriter::new(output_file));
 
     info!("loading database at {:?}", database_path);
-    let database = Database::deserialize_from(database_path, &database_metadata_path);
+    let database = Database::deserialize_from(&database_path, &database_metadata_path);
 
     info!("classifying reads...");
     let read_iter = get_fastq_iter_of_file(reads_path);
