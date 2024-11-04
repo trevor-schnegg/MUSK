@@ -50,7 +50,7 @@ fn main() {
     let args = Args::parse();
     let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.exp_cutoff).neg()));
     let database_path = Path::new(&args.database);
-    let database_metadata_path = database_path.with_extension(".meta");
+    let database_metadata_path = database_path.with_extension("meta");
     let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
 
