@@ -3,17 +3,17 @@ use std::slice::Iter;
 
 const COMPLEMENT: [usize; 4] = [3, 2, 1, 0];
 
-fn base2int(base: u8) -> usize {
-    if base == b'A' || base == b'a' {
-        0
-    } else if base == b'C' || base == b'c' {
-        1
-    } else if base == b'G' || base == b'g' {
-        2
-    } else if base == b'T' || base == b't' {
-        3
-    } else {
-        4
+fn base2int(base: u8) -> Option<usize> {
+    match base {
+        b'A' => Some(0),
+        b'a' => Some(0),
+        b'C' => Some(1),
+        b'c' => Some(1),
+        b'G' => Some(2),
+        b'g' => Some(2),
+        b'T' => Some(3),
+        b't' => Some(3),
+        _ => None,
     }
 }
 
@@ -51,15 +51,17 @@ impl<'a> KmerIter<'a> {
                     return None;
                 }
                 Some(char) => {
-                    let bit_representation = base2int(*char);
-                    if bit_representation < 4 {
-                        buffer <<= 2;
-                        buffer |= bit_representation;
-                        position += 1;
-                    } else {
-                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                        buffer = 0;
-                        position = 0;
+                    match base2int(*char) {
+                        Some(bit_representation) => {
+                            buffer <<= 2;
+                            buffer |= bit_representation;
+                            position += 1;
+                        }
+                        None => {
+                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                            buffer = 0;
+                            position = 0;
+                        }
                     }
                 }
             }
@@ -106,24 +108,26 @@ impl<'a> Iterator for KmerIter<'a> {
                     return None;
                 }
                 Some(char) => {
-                    let bit_representation = base2int(*char);
-                    if bit_representation < 4 {
-                        self.curr_kmer <<= 2;
-                        self.curr_kmer |= bit_representation;
-                        self.curr_kmer &= self.clear_bits;
+                    match base2int(*char) {
+                        Some(bit_representation) => {
+                            self.curr_kmer <<= 2;
+                            self.curr_kmer |= bit_representation;
+                            self.curr_kmer &= self.clear_bits;
 
-                        self.curr_rev_comp_kmer >>= 2;
-                        self.curr_rev_comp_kmer |=
-                            COMPLEMENT[bit_representation] << self.first_letter_shift;
+                            self.curr_rev_comp_kmer >>= 2;
+                            self.curr_rev_comp_kmer |=
+                                COMPLEMENT[bit_representation] << self.first_letter_shift;
 
-                        if self.canonical {
-                            Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
-                        } else {
-                            Some(self.curr_kmer)
+                            if self.canonical {
+                                Some(min(self.curr_kmer, self.curr_rev_comp_kmer))
+                            } else {
+                                Some(self.curr_kmer)
+                            }
                         }
-                    } else {
-                        // Encountered a character that isn't A (a), C (c), G (g), or T (t)
-                        self.find_next_kmer()
+                        None => {
+                            // Encountered a character that isn't A (a), C (c), G (g), or T (t)
+                            self.find_next_kmer()
+                        }
                     }
                 }
             }
