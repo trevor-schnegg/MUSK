@@ -313,17 +313,17 @@ impl Database {
             .zip(self.p_values.iter())
             .enumerate()
             .filter_map(|(index, (n_hits, p))| {
-                let x = if n_total <= n_max {
-                    n_hits
-                } else {
-                    ((n_hits as f64 / n_total as f64) * n_max as f64).round() as u64
-                };
+                // This check tries to save runtime in practice
+                // Only do probability computation if the p-value is going to be < 0.5
+                if n_hits as f64 > (n_total as f64 * p) {
+                    let x = if n_total <= n_max {
+                        n_hits
+                    } else {
+                        ((n_hits as f64 / n_total as f64) * n_max as f64).round() as u64
+                    };
 
-                let n = if n_total <= n_max { n_total } else { n_max };
+                    let n = if n_total <= n_max { n_total } else { n_max };
 
-                // This check saves runtime in practice
-                // Only do probability computation if the classification probability is going to be < 0.5
-                if x as f64 > (n as f64 * p) {
                     // Perform the computation using f64
                     let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
 
@@ -343,7 +343,7 @@ impl Database {
             })
         {
             // For each index that we computed, compare to find the lowest probability
-            // If, for whatever reason, two probabilities are the same, this will use the first one
+            // If (for whatever reason) two probabilities are the same, this will use the first one
             if probability < lowest_prob {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
