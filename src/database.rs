@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
-use std::{collections::HashMap, fs::File, path::Path, time::Instant};
+use std::{collections::HashMap, fs::File, path::Path};
 use tracing::{debug, info};
 
 use crate::{
@@ -295,7 +295,6 @@ impl Database {
         let mut collected_hits = vec![0_u64; self.files.len()];
 
         // Find the hits for all kmers
-        let find_hits_start = Instant::now();
         let mut n_total = 0_u64;
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|kmer| kmer as u32) {
             if let Some(index) = self.kmer_to_rle_index.get(&kmer) {
@@ -305,12 +304,9 @@ impl Database {
             }
             n_total += 1;
         }
-        let find_hits_time = find_hits_start.elapsed();
-        debug!("finding hits took {:?}", find_hits_time);
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
-        let classify_hits_start = Instant::now();
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
         for (index, probability) in collected_hits
             .into_iter()
@@ -352,8 +348,6 @@ impl Database {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
         }
-        let classify_hits_time = classify_hits_start.elapsed();
-        debug!("classifying hits took {:?}", classify_hits_time);
 
         if lowest_prob < cutoff_threshold {
             Some((
