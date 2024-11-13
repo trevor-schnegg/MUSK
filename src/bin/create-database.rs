@@ -2,7 +2,7 @@ use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use musk::database::Database;
-use musk::io::{create_output_file, load_string2taxid};
+use musk::io::{create_output_file, dump_data_to_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
 use rayon::prelude::*;
@@ -50,7 +50,6 @@ fn main() {
 
     // Create the output file so it errors if an incorrect output file is provided before computation
     let output_file = create_output_file(output_loc_path, "musk.db");
-    let output_metadata_file = create_output_file(output_loc_path, "musk.db.meta");
 
     // Load the file2taxid ordering
     info!("loading file2taxid at {}", args.file2taxid);
@@ -77,7 +76,7 @@ fn main() {
     let database = Database::from(bitmaps, CANONICAL, files, tax_ids, kmer_len);
 
     info!("dumping to file...");
-    database.serialize_to(output_file, output_metadata_file);
+    dump_data_to_file(&database, output_file).expect("could not serialize database to file");
 
     info!("done!");
 }

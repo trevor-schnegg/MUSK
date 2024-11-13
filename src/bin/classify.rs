@@ -1,7 +1,7 @@
 use clap::Parser;
 use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
-use musk::io::create_output_file;
+use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fastq_iter_of_file;
 use rayon::prelude::*;
@@ -16,7 +16,7 @@ use tracing::{info, warn};
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = 12)]
+    #[arg(short, long, default_value_t = 6)]
     /// The exponent e for the significance of hits
     /// Used in the equation 10^{-e} to determine statistical significance
     /// MUST be lower than the cutoff provided for database construction
@@ -49,9 +49,7 @@ fn main() {
     // Parse arguments from the command line
     let args = Args::parse();
     let cutoff_threshold = BigExpFloat::from_f64(10.0_f64.powi((args.exp_cutoff).neg()));
-    let database_base_path = Path::new(&args.database);
-    let database_metadata_path = database_base_path.with_extension("musk.db.meta");
-    let database_path = database_base_path.with_extension("musk.db");
+    let database_path = Path::new(&args.database);
     let output_loc_path = Path::new(&args.output_location);
     let reads_path = Path::new(&args.reads);
 
@@ -59,7 +57,7 @@ fn main() {
     let writer = Mutex::new(BufWriter::new(output_file));
 
     info!("loading database at {:?}", database_path);
-    let database = Database::deserialize_from(&database_path, &database_metadata_path);
+    let database = load_data_from_file::<Database>(database_path);
 
     info!("classifying reads...");
     let read_iter = get_fastq_iter_of_file(reads_path);

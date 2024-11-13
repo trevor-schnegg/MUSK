@@ -49,7 +49,7 @@ pub struct NaiveRunLengthEncoding {
 
 #[derive(Serialize, Deserialize)]
 pub struct RunLengthEncoding {
-    blocks: Box<[u16]>,
+    blocks: Vec<u16>,
 }
 
 impl NaiveRunLengthEncoding {
@@ -130,8 +130,16 @@ impl NaiveRunLengthEncoding {
 }
 
 impl RunLengthEncoding {
-    pub fn get_raw_blocks(&self) -> &Box<[u16]> {
+    pub fn len_of_blocks(&self) -> usize {
+        self.blocks.len()
+    }
+
+    pub fn get_raw_blocks(&self) -> &Vec<u16> {
         &self.blocks
+    }
+
+    pub fn into_raw_blocks(self) -> Vec<u16> {
+        self.blocks
     }
 
     pub fn iter(&self) -> RunLengthEncodingIter {
@@ -139,9 +147,7 @@ impl RunLengthEncoding {
     }
 
     pub fn from(blocks: Vec<u16>) -> RunLengthEncoding {
-        RunLengthEncoding {
-            blocks: blocks.into_boxed_slice(),
-        }
+        RunLengthEncoding { blocks }
     }
 
     fn compress_from(runs: Vec<u16>) -> Self {
@@ -232,13 +238,10 @@ impl RunLengthEncoding {
             compressed_blocks.push(decompress_buffer(&mut bits_buffer))
         }
 
-        let original_compressed_size = compressed_blocks.len();
         let blocks = compressed_blocks
             .into_iter()
             .map(|run| run.to_u16())
-            .collect_vec()
-            .into_boxed_slice();
-        assert_eq!(original_compressed_size, blocks.len());
+            .collect_vec();
 
         RunLengthEncoding { blocks }
     }
@@ -271,7 +274,7 @@ pub struct RunLengthEncodingIter<'a> {
 }
 
 impl<'a> RunLengthEncodingIter<'a> {
-    pub fn from_blocks(blocks: &'a Box<[u16]>) -> Self {
+    pub fn from_blocks(blocks: &'a [u16]) -> Self {
         RunLengthEncodingIter {
             curr_i: 0,
             blocks_iter: blocks.iter(),
