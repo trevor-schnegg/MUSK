@@ -23,7 +23,7 @@ pub struct Database {
     flat_rles: Box<[u16]>,
     tax_ids: Vec<usize>,
     kmer_len: usize,
-    kmer_to_rle_range: HashMap<u32, (u32, u16)>,
+    kmer_to_rle_range: HashMap<u32, (usize, u16)>,
     p_values: Vec<f64>,
 }
 
