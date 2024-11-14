@@ -64,6 +64,10 @@ impl NaiveRunLengthEncoding {
         &self.runs
     }
 
+    pub fn len_raw_runs(&self) -> usize {
+        self.runs.len()
+    }
+
     pub fn push(&mut self, index: usize) -> () {
         // This is the smallest value I am allowed to insert
         let next_sequential_index = self.highest_index.overflowing_add(1).0;

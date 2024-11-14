@@ -75,34 +75,39 @@ impl Database {
             .collect::<Vec<f64>>();
 
         // Initialize the naive RLEs to be the maximum size
-        let mut kmer_to_naive_rle: HashMap<u32, NaiveRunLengthEncoding> =
-            HashMap::with_capacity(total_canonical_kmers);
+        let mut kmer_to_naive_rle =
+            vec![NaiveRunLengthEncoding::new(); 4_usize.pow(kmer_len as u32)];
 
         // Construct all naive kmer RLEs from the bitmaps
         info!("constructing naive runs...");
         for (index, bitmap) in bitmaps.into_iter().enumerate() {
             for kmer in bitmap {
-                match kmer_to_naive_rle.get_mut(&kmer) {
-                    Some(naive_rle) => naive_rle.push(index),
-                    None => {
-                        let mut new_naive_rle = NaiveRunLengthEncoding::new();
-                        new_naive_rle.push(index);
-                        kmer_to_naive_rle.insert(kmer, new_naive_rle);
-                    }
-                }
+                kmer_to_naive_rle[kmer as usize].push(index);
             }
         }
 
+        let filtered_kmers_and_rles = kmer_to_naive_rle
+            .into_iter()
+            .enumerate()
+            .filter_map(|(kmer, naive_rle)| {
+                if naive_rle.len_raw_runs() == 0 {
+                    None
+                } else {
+                    Some((kmer as u32, naive_rle))
+                }
+            })
+            .collect::<Vec<(u32, NaiveRunLengthEncoding)>>();
+
         // Log information about the number of naive runs
-        let naive_run_count = kmer_to_naive_rle
+        let naive_run_count = filtered_kmers_and_rles
             .par_iter()
-            .map(|(_kmer, naive_rle)| naive_rle.get_raw_runs().len())
+            .map(|(_kmer, naive_rle)| naive_rle.len_raw_runs())
             .sum::<usize>();
         debug!("number of naive rle runs: {}", naive_run_count);
 
         // Compress the database by allowing the use of uncompressed bit sets
         info!("naive runs constructed! allowing uncompressed bit sets...");
-        let kmers_and_rles = kmer_to_naive_rle
+        let kmers_and_rles = filtered_kmers_and_rles
             .into_par_iter()
             .map(|(kmer, naive_rle)| (kmer, naive_rle.to_rle().into_raw_blocks()))
             .collect::<Vec<(u32, Vec<u16>)>>();
