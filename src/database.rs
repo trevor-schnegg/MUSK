@@ -29,10 +29,10 @@ pub struct Database {
 
 fn create_flat_index(
     kmers_and_rles: Vec<(u32, Vec<u16>)>,
-) -> (HashMap<u32, (u32, u16)>, Box<[u16]>) {
+) -> (HashMap<u32, (usize, u16)>, Box<[u16]>) {
     // Create the true underlying data structures from previous variables
     let mut kmer_to_rle_range = HashMap::with_capacity(kmers_and_rles.len());
-    let mut current_index = 0_u32;
+    let mut current_index = 0_usize;
     let flat_rles = kmers_and_rles
         .into_iter()
         .map(|(kmer, rle)| {
@@ -42,15 +42,15 @@ fn create_flat_index(
                 panic!();
             }
 
-            // Check to make sure the u32 index doesn't overflow
-            if current_index as usize + rle.len() > u32::MAX as usize {
+            // Check to make sure the usize index doesn't overflow
+            if current_index as usize + rle.len() > usize::MAX {
                 error!("the total size of the run-length encodings exceeded what the current implementation allows");
                 panic!();
             }
 
             // Insert into the range and return the raw u16 blocks
             kmer_to_rle_range.insert(kmer, (current_index, rle.len() as u16));
-            current_index += rle.len() as u32;
+            current_index += rle.len();
             rle
         })
         .flatten()
