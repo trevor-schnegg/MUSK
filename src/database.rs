@@ -20,7 +20,7 @@ pub struct Database {
     canonical: bool,
     consts: Consts,
     files: Vec<String>,
-    flat_rles: Box<[u16]>,
+    flat_rles: Vec<u16>,
     tax_ids: Vec<usize>,
     kmer_len: usize,
     kmer_to_rle_range: HashMap<u32, (usize, u16)>,
@@ -29,7 +29,7 @@ pub struct Database {
 
 fn create_flat_index(
     kmers_and_rles: Vec<(u32, Vec<u16>)>,
-) -> (HashMap<u32, (usize, u16)>, Box<[u16]>) {
+) -> (HashMap<u32, (usize, u16)>, Vec<u16>) {
     // Create the true underlying data structures from previous variables
     let mut kmer_to_rle_range = HashMap::with_capacity(kmers_and_rles.len());
     let mut current_index = 0_usize;
@@ -54,7 +54,7 @@ fn create_flat_index(
             rle
         })
         .flatten()
-        .collect::<Box<[u16]>>();
+        .collect::<Vec<u16>>();
     (kmer_to_rle_range, flat_rles)
 }
 
