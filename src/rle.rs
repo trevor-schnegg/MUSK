@@ -64,7 +64,7 @@ impl NaiveRunLengthEncoding {
         &self.runs
     }
 
-    pub fn len_raw_runs(&self) -> usize {
+    pub fn num_of_blocks(&self) -> usize {
         self.runs.len()
     }
 
@@ -134,7 +134,7 @@ impl NaiveRunLengthEncoding {
 }
 
 impl RunLengthEncoding {
-    pub fn len_of_blocks(&self) -> usize {
+    pub fn num_of_blocks(&self) -> usize {
         self.blocks.len()
     }
 
