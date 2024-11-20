@@ -15,6 +15,9 @@ use crate::{
     rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
 
+const CUTOFF_JUMP: u64 = 180;
+const CUTOFF_DELTA: f64 = 0.005;
+
 #[derive(Serialize, Deserialize)]
 pub struct Database {
     canonical: bool,
@@ -310,6 +313,7 @@ impl Database {
         n_max: u64,
     ) -> Option<(&str, usize)> {
         let mut collected_hits = vec![0_u64; self.files.len()];
+        let mut old_nums = vec![];
 
         // Find the hits for all kmers
         let mut n_total = 0_u64;
@@ -320,6 +324,29 @@ impl Database {
                     .for_each(|file_index| collected_hits[file_index] += 1);
             }
             n_total += 1;
+            if n_total == CUTOFF_JUMP {
+                old_nums = collected_hits
+                    .iter()
+                    .map(|n_hits| (*n_hits as f64 / n_total as f64))
+                    .collect_vec();
+            } else if n_total % CUTOFF_JUMP == 0 {
+                let new_nums = collected_hits
+                    .iter()
+                    .map(|n_hits| (*n_hits as f64 / n_total as f64))
+                    .collect_vec();
+                let mut is_different = false;
+                for (old, new) in new_nums.iter().zip(old_nums.iter()) {
+                    if (*old - *new).abs() > CUTOFF_DELTA {
+                        is_different = true;
+                        break;
+                    }
+                }
+                if is_different {
+                    old_nums = new_nums
+                } else {
+                    break;
+                }
+            }
         }
 
         // Classify the hits
