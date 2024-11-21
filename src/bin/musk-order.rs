@@ -10,17 +10,16 @@ use std::{
 };
 use tracing::{debug, info};
 
-/// Creates an ordering of files based on a pairwise distance matrix
-/// This is done such that the total hamming distance of the ordering is as small as possible
+/// Creates an ordered (.o) file2taxid (.f2t) file based on a pairwise distance matrix.
+/// This is done such that the total hamming distance of the ordering is as small as possible.
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Where to write the output
-    /// If a file, '.musk.o.f2t' is added
-    /// If a directory, 'musk.o.f2t' will be the file name
-    /// Name means: musk, (o)rdered, (f)ile(2)(t)axid
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string(), verbatim_doc_comment)]
+    /// Where to write the ordered (.o) file2taxid (.f2t) file.
+    /// If a file is provided, the extention '.musk.o.f2t' is added.
+    /// If a directory is provided, 'musk.o.f2t' will be the file name.
     output_location: String,
 
     #[arg(short, long, default_value_t = 0)]
@@ -28,7 +27,7 @@ struct Args {
     start: usize,
 
     #[arg()]
-    /// The pairwise distances file
+    /// The pairwise distances (.pd) file
     distances: String,
 }
 
@@ -41,27 +40,28 @@ fn main() {
     let distances_file = Path::new(&args.distances);
     let output_loc_path = Path::new(&args.output_location);
 
-    // Create the output file
-    let mut output_file = BufWriter::new(create_output_file(output_loc_path, "musk.o.f2t"));
+    // Create the output file so it errors if an incorrect output file is provided before computation
+    let mut output_writer = BufWriter::new(create_output_file(output_loc_path, "musk.o.f2t"));
 
     info!("loading distances at {}", args.distances);
     let (distances, file2taxid) =
         load_data_from_file::<(Vec<Vec<u32>>, Vec<(String, usize)>)>(distances_file);
 
-    debug!("length of distances: {}", distances.len());
     info!("distances loaded! finding ordering...");
-
-    // Perform the greedy solution
+    // Perform the greedy solution -- no other options for right now
     let greedy_ordering = greedy_ordering(&distances, args.start);
-    let (_avg_dist, total_dist) = ordering_statistics(&greedy_ordering, &distances);
+    let (avg_dist, total_dist) = ordering_statistics(&greedy_ordering, &distances);
     debug!("length of tour: {}", total_dist);
+    debug!("average distance between files: {}", avg_dist);
 
     for index in greedy_ordering {
         let (files_string, taxid) = &file2taxid[index];
-        output_file
+        output_writer
             .write(format!("{}\t{}\n", *files_string, *taxid).as_bytes())
             .expect("could not write to output file");
     }
 
-    output_file.flush().unwrap();
+    output_writer.flush().unwrap();
+
+    info!("done!");
 }

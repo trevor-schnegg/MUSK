@@ -1,6 +1,7 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
+use musk::consts::CANONICAL;
 use musk::database::Database;
 use musk::io::{create_output_file, dump_data_to_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
@@ -10,9 +11,8 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use tracing::info;
 
-const CANONICAL: bool = true;
-
-/// Creates a run length encoding database
+/// Creates a musk database (.db) file from a file2taxid (.f2t) file.
+/// For significant database size improvement, the file should be ordered (.o).
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -21,19 +21,18 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
-    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Where to write the output
-    /// If a file, '.musk.db' is added
-    /// If a directory, 'musk.db' will be the file name
-    /// Name means: musk, (d)ata(b)ase
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string(), verbatim_doc_comment)]
+    /// Where to write the database (.db) file.
+    /// If a file is provided, the extension '.musk.db' is added.
+    /// If a directory is provided, 'musk.db' will be the file name.
     output_location: String,
 
     #[arg()]
-    /// The (preferrably ordered) file2taxid map
+    /// The file2taxid (.f2t) file. Preferrably ordered (.o) as well.
     file2taxid: String,
 
     #[arg()]
-    /// Directory with fasta files to create reference from
+    /// Directory with fasta files targets of the reference database
     reference_directory: String,
 }
 

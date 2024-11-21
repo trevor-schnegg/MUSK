@@ -1,17 +1,19 @@
 use crate::big_exp_float::BigExpFloat;
 use serde::{Deserialize, Serialize};
 
+pub const CANONICAL: bool = true;
+
 #[derive(Serialize, Deserialize)]
-pub struct Consts {
+pub struct BinomialConsts {
     pub(crate) gamma_r: f64,
     pub(crate) gamma_dk: Vec<BigExpFloat>,
     pub(crate) ln_pi: BigExpFloat,
     pub(crate) ln_2_sqrt_e_over_pi: BigExpFloat,
 }
 
-impl Consts {
+impl BinomialConsts {
     pub fn new() -> Self {
-        Consts {
+        BinomialConsts {
             gamma_r: 10.900511,
             gamma_dk: vec![
                 BigExpFloat::from_f64(2.48574089138753565546e-5),

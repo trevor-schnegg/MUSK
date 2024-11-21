@@ -26,7 +26,7 @@ struct Args {
     output_location: String,
 
     #[arg()]
-    /// Directory with fasta files to create reference from
+    /// Directory with fasta file targets of the reference database
     reference_directory: String,
 }
 
@@ -39,8 +39,8 @@ fn main() {
     let output_loc_path = Path::new(&args.output_location);
     let reference_dir_path = Path::new(&args.reference_directory);
 
-    // Create the output file
-    let mut output_file = BufWriter::new(create_output_file(output_loc_path, "musk.f2t"));
+    // Create the output file so it errors if an incorrect output file is provided before computation
+    let mut output_writer = BufWriter::new(create_output_file(output_loc_path, "musk.f2t"));
 
     // Get the accession2taxid, if one was provided
     let accession2taxid: Option<HashMap<String, usize>> = match args.accession2taxid {
@@ -98,7 +98,7 @@ fn main() {
 
     for (file, taxid) in file2taxid {
         // Write the result to the output file
-        output_file
+        output_writer
             .write(
                 format!(
                     "{}\t{}\n",
@@ -110,5 +110,7 @@ fn main() {
             .expect("could not write to output file");
     }
 
-    output_file.flush().unwrap();
+    output_writer.flush().unwrap();
+
+    info!("done");
 }

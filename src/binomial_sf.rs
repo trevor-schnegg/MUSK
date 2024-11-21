@@ -1,10 +1,10 @@
 use crate::big_exp_float::BigExpFloat;
-use crate::consts::Consts;
+use crate::consts::BinomialConsts;
 use approx::ulps_eq;
 use num_traits::{FloatConst, One, Zero};
 use statrs::StatsError;
 
-pub fn sf(p: f64, n: u64, x: u64, consts: &Consts) -> BigExpFloat {
+pub fn sf(p: f64, n: u64, x: u64, consts: &BinomialConsts) -> BigExpFloat {
     if x >= n {
         BigExpFloat::zero()
     } else {
@@ -13,7 +13,12 @@ pub fn sf(p: f64, n: u64, x: u64, consts: &Consts) -> BigExpFloat {
     }
 }
 
-fn checked_beta_reg(a: f64, b: f64, x: f64, consts: &Consts) -> Result<BigExpFloat, StatsError> {
+fn checked_beta_reg(
+    a: f64,
+    b: f64,
+    x: f64,
+    consts: &BinomialConsts,
+) -> Result<BigExpFloat, StatsError> {
     if a <= 0.0 {
         Err(StatsError::ArgMustBePositive("a"))
     } else if b <= 0.0 {
@@ -78,7 +83,7 @@ fn checked_beta_reg(a: f64, b: f64, x: f64, consts: &Consts) -> Result<BigExpFlo
     }
 }
 
-fn ln_gamma(x: f64, consts: &Consts) -> BigExpFloat {
+fn ln_gamma(x: f64, consts: &BinomialConsts) -> BigExpFloat {
     if x < 0.5 {
         let s = consts
             .gamma_dk

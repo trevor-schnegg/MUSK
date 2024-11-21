@@ -10,7 +10,7 @@ use tracing::{debug, info};
 use crate::{
     big_exp_float::BigExpFloat,
     binomial_sf::sf,
-    consts::Consts,
+    consts::BinomialConsts,
     kmer_iter::KmerIter,
     rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
@@ -21,7 +21,7 @@ const CUTOFF_DELTA: f64 = 0.005;
 #[derive(Serialize, Deserialize)]
 pub struct Database {
     canonical: bool,
-    consts: Consts,
+    consts: BinomialConsts,
     files: Vec<String>,
     rles: Vec<RunLengthEncoding>,
     tax_ids: Vec<usize>,
@@ -109,7 +109,7 @@ impl Database {
 
         Database {
             canonical,
-            consts: Consts::new(),
+            consts: BinomialConsts::new(),
             files,
             rles,
             tax_ids,

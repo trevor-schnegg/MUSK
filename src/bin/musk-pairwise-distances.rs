@@ -1,6 +1,7 @@
 use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
+use musk::consts::CANONICAL;
 use musk::io::{create_output_file, dump_data_to_file, load_string2taxid};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::create_bitmap;
@@ -9,9 +10,7 @@ use roaring::RoaringBitmap;
 use std::path::Path;
 use tracing::info;
 
-const CANONICAL: bool = true;
-
-/// Computes the lower triangle of a pairwise distance matrix from the input file2taxid
+/// Computes the pairwise distance (.pd) matrix (lower triangle) from the input file2taxid
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -20,19 +19,18 @@ struct Args {
     /// Length of k-mer to use in the database
     kmer_length: usize,
 
-    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string())]
-    /// Where to write the output
-    /// If a file, '.musk.pd' is added
-    /// If a directory, 'musk.pd' will be the file name
-    /// Name means: musk, (p)airwise (d)istances
+    #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string(), verbatim_doc_comment)]
+    /// Where to write the pairwise distance (.pd) file.
+    /// If a file is provided, the extention '.musk.pd' is added.
+    /// If a directory is provided, 'musk.pd' will be the file name.
     output_location: String,
 
     #[arg()]
-    /// The file2taxid map file
+    /// The file2taxid (.f2t) file
     file2taxid: String,
 
     #[arg()]
-    /// Directory with fasta files to create reference from
+    /// Directory with fasta file targets of the reference database
     reference_directory: String,
 }
 
@@ -47,16 +45,13 @@ fn main() {
     let output_loc_path = Path::new(&args.output_location);
     let ref_dir_path = Path::new(&args.reference_directory);
 
-    // Create the output file
+    // Create the output file so it errors if an incorrect output file is provided before computation
     let output_file = create_output_file(output_loc_path, "musk.pd");
 
     info!("loading file2taxid at {}", args.file2taxid);
     let file2taxid = load_string2taxid(file2taxid_path);
 
-    info!(
-        "{} groups total, creating roaring bitmaps for each group...",
-        file2taxid.len()
-    );
+    info!("creating roaring bitmaps for each group...");
     let bitmaps = file2taxid
         .par_iter()
         .progress()
@@ -72,7 +67,6 @@ fn main() {
         .collect::<Vec<RoaringBitmap>>();
 
     info!("roaring bitmaps created, creating distance matrix...");
-
     let distances = bitmaps
         .par_iter()
         .progress()
