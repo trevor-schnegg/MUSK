@@ -30,7 +30,7 @@ struct Args {
     file2taxid: String,
 
     #[arg()]
-    /// Directory with fasta file targets of the reference database
+    /// Directory with FASTA file targets of the reference database
     reference_directory: String,
 }
 
