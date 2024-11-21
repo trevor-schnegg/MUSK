@@ -12,7 +12,7 @@ use std::path::Path;
 use tracing::info;
 
 /// Creates a musk database (.db) file from a file2taxid (.f2t) file.
-/// For significant database size improvement, the file should be ordered (.o).
+/// For significant database size improvement, the file2taxid should be ordered (.o.f2t).
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
@@ -28,7 +28,7 @@ struct Args {
     output_location: String,
 
     #[arg()]
-    /// The file2taxid (.f2t) file. Preferrably ordered (.o) as well.
+    /// The file2taxid (.f2t) file. Preferrably ordered (.o.f2t).
     file2taxid: String,
 
     #[arg()]

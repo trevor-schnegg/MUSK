@@ -10,14 +10,14 @@ use std::{
 };
 use tracing::{debug, info};
 
-/// Creates an ordered (.o) file2taxid (.f2t) file based on a pairwise distance matrix.
+/// Creates an ordered file2taxid (.o.f2t) file based on a pairwise distance matrix.
 /// This is done such that the total hamming distance of the ordering is as small as possible.
 #[derive(Parser)]
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
     #[arg(short, long, default_value_t = std::env::current_dir().unwrap().to_str().unwrap().to_string(), verbatim_doc_comment)]
-    /// Where to write the ordered (.o) file2taxid (.f2t) file.
+    /// Where to write the ordered file2taxid (.o.f2t) file.
     /// If a file is provided, the extention '.musk.o.f2t' is added.
     /// If a directory is provided, 'musk.o.f2t' will be the file name.
     output_location: String,
