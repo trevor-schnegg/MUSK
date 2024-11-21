@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use tracing::{info, warn};
 
-/// Classifies the input reads using a musk database (.db) file.
+/// Classifies the input reads using a musk database (.db/.cdb) file.
 /// Output is a readid2file (.r2f) mapping, including the taxid for the file if it was provided during database construction.
 #[derive(Parser)]
 #[clap(version, about)]
@@ -33,7 +33,7 @@ struct Args {
     output_location: String,
 
     #[arg()]
-    /// The database (.db) file
+    /// The database (.db/.cdb) file
     database: String,
 
     #[arg()]
