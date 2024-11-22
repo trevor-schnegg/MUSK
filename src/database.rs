@@ -3,7 +3,10 @@ use num_traits::One;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
-use statrs::distribution::{Binomial, DiscreteCDF};
+use statrs::{
+    distribution::{Binomial, DiscreteCDF},
+    statistics::Statistics,
+};
 use std::{collections::HashMap, u16, u32};
 use tracing::{debug, info};
 
@@ -15,8 +18,7 @@ use crate::{
     rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
 
-const CUTOFF_JUMP: u64 = 180;
-const CUTOFF_DELTA: f64 = 0.005;
+const EARLY_EXIT_DELTA: f64 = 0.01;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
@@ -312,39 +314,55 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
     ) -> Option<(&str, usize)> {
-        let mut collected_hits = vec![0_u64; self.files.len()];
-        let mut old_nums = vec![];
+        let mut file_index_to_n_hits = vec![0_u64; self.files.len()];
 
-        // Find the hits for all kmers
+        // Create a variable to track the last classification hit counts
+        let mut last_file_pcts = vec![];
+
+        // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
+
+        // For each kmer in the read
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
+            // Get the corresponding run-length encoding and increment those file counts
             if let Some(rle_index) = self.kmer_to_rle_index.get(&(kmer as u32)) {
                 self.rles[*rle_index as usize]
                     .iter()
-                    .for_each(|file_index| collected_hits[file_index] += 1);
+                    .for_each(|file_index| file_index_to_n_hits[file_index] += 1);
             }
+            // Increment the total number of queries
             n_total += 1;
-            if n_total == CUTOFF_JUMP {
-                old_nums = collected_hits
+
+            // Check for a premature exit
+            if n_total % n_max == 0 {
+                let curr_file_pcts = file_index_to_n_hits
                     .iter()
                     .map(|n_hits| (*n_hits as f64 / n_total as f64))
                     .collect_vec();
-            } else if n_total % CUTOFF_JUMP == 0 {
-                let new_nums = collected_hits
-                    .iter()
-                    .map(|n_hits| (*n_hits as f64 / n_total as f64))
-                    .collect_vec();
-                let mut is_different = false;
-                for (old, new) in new_nums.iter().zip(old_nums.iter()) {
-                    if (*old - *new).abs() > CUTOFF_DELTA {
-                        is_different = true;
-                        break;
-                    }
+
+                // If this is the first time, update the last and continue
+                if n_total == n_max {
+                    last_file_pcts = curr_file_pcts;
+                    continue;
                 }
-                if is_different {
-                    old_nums = new_nums
-                } else {
+
+                // Otherwise, check if we can exit early
+                let file_diffs = curr_file_pcts
+                    .iter()
+                    .zip(last_file_pcts.iter())
+                    .map(|(curr_pct, last_pct)| (curr_pct - last_pct).abs())
+                    .collect::<Vec<f64>>();
+                let file_diff_mean = file_diffs.iter().sum::<f64>() / curr_file_pcts.len() as f64;
+                let file_diff_stddev = file_diffs.std_dev();
+                // \mu * 2\sigma on a normal distribution
+                let upper_bound = file_diff_mean + (2.0 * file_diff_stddev);
+
+                if upper_bound < EARLY_EXIT_DELTA {
+                    debug!("cutoff triggered at {}", n_total);
                     break;
+                } else {
+                    last_file_pcts = curr_file_pcts;
+                    continue;
                 }
             }
         }
@@ -352,7 +370,7 @@ impl Database {
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        for (index, probability) in collected_hits
+        for (index, probability) in file_index_to_n_hits
             .into_iter()
             .zip(self.p_values.iter())
             .enumerate()
