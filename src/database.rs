@@ -18,7 +18,7 @@ use crate::{
     rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
 
-const EARLY_EXIT_DELTA: f64 = 0.01;
+const EARLY_EXIT_DELTA: f64 = 0.005;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
