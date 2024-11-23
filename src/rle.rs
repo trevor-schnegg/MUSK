@@ -1,5 +1,4 @@
 use bit_iter::BitIter;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::slice::Iter;
 use tracing::warn;
@@ -49,7 +48,7 @@ pub struct NaiveRunLengthEncoding {
 
 #[derive(Serialize, Deserialize)]
 pub struct RunLengthEncoding {
-    blocks: Vec<u16>,
+    blocks: Box<[u16]>,
 }
 
 impl NaiveRunLengthEncoding {
@@ -138,11 +137,11 @@ impl RunLengthEncoding {
         self.blocks.len()
     }
 
-    pub fn get_raw_blocks(&self) -> &Vec<u16> {
+    pub fn get_raw_blocks(&self) -> &[u16] {
         &self.blocks
     }
 
-    pub fn into_raw_blocks(self) -> Vec<u16> {
+    pub fn into_raw_blocks(self) -> Box<[u16]> {
         self.blocks
     }
 
@@ -150,7 +149,7 @@ impl RunLengthEncoding {
         RunLengthEncodingIter::from_blocks(&self.blocks)
     }
 
-    pub fn from(blocks: Vec<u16>) -> RunLengthEncoding {
+    pub fn from(blocks: Box<[u16]>) -> RunLengthEncoding {
         RunLengthEncoding { blocks }
     }
 
@@ -245,7 +244,7 @@ impl RunLengthEncoding {
         let blocks = compressed_blocks
             .into_iter()
             .map(|run| run.to_u16())
-            .collect_vec();
+            .collect::<Box<[u16]>>();
 
         RunLengthEncoding { blocks }
     }

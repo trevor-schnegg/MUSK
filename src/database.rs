@@ -24,12 +24,12 @@ const EARLY_EXIT_DELTA: f64 = 0.005;
 pub struct Database {
     canonical: bool,
     consts: BinomialConsts,
-    files: Vec<String>,
-    rles: Vec<RunLengthEncoding>,
-    tax_ids: Vec<usize>,
+    files: Box<[String]>,
+    rles: Box<[RunLengthEncoding]>,
+    tax_ids: Box<[usize]>,
     kmer_len: usize,
     kmer_to_rle_index: HashMap<u32, u32>,
-    p_values: Vec<f64>,
+    p_values: Box<[f64]>,
 }
 
 impl Database {
@@ -47,7 +47,7 @@ impl Database {
         let p_values = file_bitmaps
             .par_iter()
             .map(|bitmap| bitmap.len() as f64 / total_canonical_kmers as f64)
-            .collect::<Vec<f64>>();
+            .collect::<Box<[f64]>>();
 
         // Initialize the naive RLEs to be the maximum size
         let mut kmer_to_naive_rle =
@@ -107,14 +107,14 @@ impl Database {
                 kmer_to_rle_index.insert(kmer, index as u32);
                 rle
             })
-            .collect::<Vec<RunLengthEncoding>>();
+            .collect::<Box<[RunLengthEncoding]>>();
 
         Database {
             canonical,
             consts: BinomialConsts::new(),
-            files,
+            files: files.into_boxed_slice(),
             rles,
-            tax_ids,
+            tax_ids: tax_ids.into_boxed_slice(),
             kmer_len,
             kmer_to_rle_index,
             p_values,
@@ -273,7 +273,7 @@ impl Database {
             let raw_compressed_blocks = compressed_blocks
                 .into_iter()
                 .map(|block| block.to_u16())
-                .collect_vec();
+                .collect::<Box<[u16]>>();
             *current_rle = RunLengthEncoding::from(raw_compressed_blocks);
         }); // end par_iter_mut/for_each
 
@@ -303,7 +303,7 @@ impl Database {
         let p_values = file2kmer_num
             .into_par_iter()
             .map(|kmer_num| kmer_num as f64 / total_canonical_kmers as f64)
-            .collect::<Vec<f64>>();
+            .collect::<Box<[f64]>>();
 
         self.p_values = p_values;
     }
