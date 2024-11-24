@@ -358,7 +358,6 @@ impl Database {
                 let upper_bound = file_diff_mean + (2.0 * file_diff_stddev);
 
                 if upper_bound < EARLY_EXIT_DELTA {
-                    debug!("cutoff triggered at {}", n_total);
                     break;
                 } else {
                     last_file_pcts = curr_file_pcts;
