@@ -1,12 +1,8 @@
-use itertools::Itertools;
 use num_traits::One;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
-use statrs::{
-    distribution::{Binomial, DiscreteCDF},
-    statistics::Statistics,
-};
+use statrs::distribution::{Binomial, DiscreteCDF};
 use std::{collections::HashMap, u16, u32};
 use tracing::{debug, info};
 
@@ -17,8 +13,6 @@ use crate::{
     kmer_iter::KmerIter,
     rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
 };
-
-const EARLY_EXIT_DELTA: f64 = 0.005;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
@@ -316,9 +310,6 @@ impl Database {
     ) -> Option<(&str, usize)> {
         let mut file_index_to_n_hits = vec![0_u64; self.files.len()];
 
-        // Create a variable to track the last classification hit counts
-        let mut last_file_pcts = vec![];
-
         // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
 
@@ -332,38 +323,6 @@ impl Database {
             }
             // Increment the total number of queries
             n_total += 1;
-
-            // Check for a premature exit
-            if n_total % n_max == 0 {
-                let curr_file_pcts = file_index_to_n_hits
-                    .iter()
-                    .map(|n_hits| (*n_hits as f64 / n_total as f64))
-                    .collect_vec();
-
-                // If this is the first time, update the last and continue
-                if n_total == n_max {
-                    last_file_pcts = curr_file_pcts;
-                    continue;
-                }
-
-                // Otherwise, check if we can exit early
-                let file_diffs = curr_file_pcts
-                    .iter()
-                    .zip(last_file_pcts.iter())
-                    .map(|(curr_pct, last_pct)| (curr_pct - last_pct).abs())
-                    .collect::<Vec<f64>>();
-                let file_diff_mean = file_diffs.iter().sum::<f64>() / curr_file_pcts.len() as f64;
-                let file_diff_stddev = file_diffs.std_dev();
-                // \mu * 2\sigma on a normal distribution
-                let upper_bound = file_diff_mean + (2.0 * file_diff_stddev);
-
-                if upper_bound < EARLY_EXIT_DELTA {
-                    break;
-                } else {
-                    last_file_pcts = curr_file_pcts;
-                    continue;
-                }
-            }
         }
 
         // Classify the hits
