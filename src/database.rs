@@ -144,6 +144,13 @@ impl Database {
             .sum::<usize>();
         debug!("total set bits before compression {}", total_set_bits);
 
+        let total_blocks = self
+            .rles
+            .par_iter()
+            .map(|rle| rle.num_of_blocks())
+            .sum::<usize>();
+        debug!("total blocks before compression {}", total_blocks);
+
         self.rles.par_iter_mut().for_each(|current_rle| {
             // variable to hold the new lossy compressed blocks as u16s
             let mut compressed_blocks = vec![];
@@ -278,6 +285,13 @@ impl Database {
             .map(|rle| rle.iter().count())
             .sum::<usize>();
         info!("total set bits after compression {}", total_set_bits);
+
+        let total_blocks = self
+            .rles
+            .par_iter()
+            .map(|rle| rle.num_of_blocks())
+            .sum::<usize>();
+        debug!("total blocks after compression {}", total_blocks);
 
         // Recompute the p_values after
         self.recompute_p_values();
