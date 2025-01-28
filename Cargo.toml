@@ -6,20 +6,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-approx = "*"
-bincode = "*"
-bio = "*"
+approx = "0.5.1"
+bincode = "1.3.3"
+bio = "2.0.3"
 bit-iter = "*"
-clap = { version = "*", features = ["derive"] }
-indicatif = {version = "*", features = ["rayon"]} 
-itertools = "*"
-num-traits = "*"
-rand = "*"
-rayon = "*"
-roaring = { version = "*", features = ["serde"]}
-serde = {version = "*", features = ["derive"]}
-statrs = "*"
-taxonomy = "*"
-threadpool = "*"
-tracing = "*"
-tracing-subscriber = { version = "*", features = ["std", "env-filter"] }
+clap = { version = "4.5.27", features = ["derive"] }
+indicatif = { version = "0.17.11", features = ["rayon"] }
+itertools = "0.14.0"
+num-traits = "0.2.19"
+rand = "0.9.0"
+rayon = "1.10.0"
+roaring = { version = "0.10.10", features = ["serde"] }
+serde = { version = "1.0.217", features = ["derive"] }
+statrs = "0.17.0"
+taxonomy = "0.10.0"
+threadpool = "1.8.1"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["std", "env-filter"] }

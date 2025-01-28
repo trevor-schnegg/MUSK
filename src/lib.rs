@@ -3,7 +3,6 @@ pub mod binomial_sf;
 pub mod consts;
 pub mod database;
 pub mod decode;
-pub mod generator;
 pub mod group;
 pub mod io;
 pub mod kmer_iter;
