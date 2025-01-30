@@ -9,6 +9,7 @@ use std::io::{BufWriter, Write};
 use std::ops::Neg;
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::Instant;
 use tracing::{info, warn};
 
 /// Classifies the input reads using a musk database (.db/.cdb) file.
@@ -68,6 +69,8 @@ fn main() {
     info!("classifying reads...");
     let read_iter = get_fastq_iter_of_file(reads_path);
     let chunked_read_iter = ChunkFastqIter::from(read_iter, args.chunk_size);
+    let start_time = Instant::now();
+
     chunked_read_iter
         .par_bridge()
         .into_par_iter()
@@ -113,6 +116,8 @@ fn main() {
                 } // end match
             } // end for
         });
+    let classify_time = start_time.elapsed().as_secs_f64();
+    info!("classification time: {} s", classify_time);
 
     info!("done!");
 }
