@@ -322,11 +322,13 @@ impl Database {
 
     pub fn classify(
         &self,
-        num_hits: &mut Vec<u64>,
         read: &[u8],
         cutoff_threshold: BigExpFloat,
         n_max: u64,
     ) -> Option<(&str, usize)> {
+        // Create a vector to store the hits
+        let mut num_hits = vec![0_u64; self.num_files()];
+
         // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
 

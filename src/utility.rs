@@ -63,50 +63,6 @@ pub fn get_fastq_iter_of_file(file_path: &Path) -> fastq::Records<BufReader<File
     }
 }
 
-pub struct ChunkFastqIter {
-    fastq_iter: fastq::Records<BufReader<File>>,
-    chunk_size: usize,
-    is_done: bool,
-}
-
-impl ChunkFastqIter {
-    pub fn from(fastq_iter: fastq::Records<BufReader<File>>, chunk_size: usize) -> Self {
-        ChunkFastqIter {
-            fastq_iter,
-            chunk_size,
-            is_done: false,
-        }
-    }
-}
-
-impl Iterator for ChunkFastqIter {
-    type Item = Vec<Result<fastq::Record, fastq::Error>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.is_done {
-            None
-        } else {
-            let mut chunk = Vec::with_capacity(self.chunk_size);
-
-            for _ in 0..self.chunk_size {
-                match self.fastq_iter.next() {
-                    Some(result) => chunk.push(result),
-                    None => {
-                        self.is_done = true;
-                        break;
-                    }
-                }
-            }
-
-            if chunk.is_empty() {
-                None
-            } else {
-                Some(chunk)
-            }
-        }
-    }
-}
-
 // Creates a single bitmap containing k-mers from all files, if necessary
 pub fn create_bitmap(files: Vec<PathBuf>, kmer_len: usize, canonical: bool) -> RoaringBitmap {
     let mut bitmap = RoaringBitmap::new();
