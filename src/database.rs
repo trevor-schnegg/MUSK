@@ -27,6 +27,10 @@ pub struct Database {
 }
 
 impl Database {
+    pub fn num_files(&self) -> usize {
+        self.files.len()
+    }
+
     pub fn from(
         file_bitmaps: Vec<RoaringBitmap>,
         canonical: bool,
@@ -318,12 +322,11 @@ impl Database {
 
     pub fn classify(
         &self,
+        num_hits: &mut Vec<u64>,
         read: &[u8],
         cutoff_threshold: BigExpFloat,
         n_max: u64,
     ) -> Option<(&str, usize)> {
-        let mut file_index_to_n_hits = vec![0_u64; self.files.len()];
-
         // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
 
@@ -333,7 +336,7 @@ impl Database {
             if let Some(rle_index) = self.kmer_to_rle_index.get(&(kmer as u32)) {
                 self.rles[*rle_index as usize]
                     .iter()
-                    .for_each(|file_index| file_index_to_n_hits[file_index] += 1);
+                    .for_each(|file_index| num_hits[file_index] += 1);
             }
             // Increment the total number of queries
             n_total += 1;
@@ -342,18 +345,18 @@ impl Database {
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
-        for (index, probability) in file_index_to_n_hits
-            .into_iter()
+        for (index, probability) in num_hits
+            .iter()
             .zip(self.p_values.iter())
             .enumerate()
             .filter_map(|(index, (n_hits, p))| {
                 // This check tries to save runtime in practice
                 // Only do probability computation if the p-value is going to be < 0.5
-                if n_hits as f64 > (n_total as f64 * p) {
+                if *n_hits as f64 > (n_total as f64 * p) {
                     let x = if n_total <= n_max {
-                        n_hits
+                        *n_hits
                     } else {
-                        ((n_hits as f64 / n_total as f64) * n_max as f64).round() as u64
+                        (*n_hits as f64 * n_max as f64 / n_total as f64).round() as u64
                     };
 
                     let n = if n_total <= n_max { n_total } else { n_max };

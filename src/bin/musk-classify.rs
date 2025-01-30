@@ -3,7 +3,7 @@ use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
-use musk::utility::get_fastq_iter_of_file;
+use musk::utility::{get_fastq_iter_of_file, ChunkFastqIter};
 use rayon::prelude::*;
 use std::io::{BufWriter, Write};
 use std::ops::Neg;
@@ -17,6 +17,10 @@ use tracing::{info, warn};
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, default_value_t = 16)]
+    // The batch size of reads for each thread
+    chunk_size: usize,
+
     #[arg(short, long, default_value_t = 6, verbatim_doc_comment)]
     /// The exponent 'e' used in the equation 10^{-e}.
     /// Any calculated p-value below 10^{-e} will result in a classification.
@@ -63,31 +67,51 @@ fn main() {
 
     info!("classifying reads...");
     let read_iter = get_fastq_iter_of_file(reads_path);
-    read_iter
+    let chunked_read_iter = ChunkFastqIter::from(read_iter, args.chunk_size);
+    chunked_read_iter
         .par_bridge()
         .into_par_iter()
-        .for_each(|record_result| match record_result {
-            Err(_) => {
-                warn!("error encountered while reading fastq file");
-                warn!("skipping the read that caused the error")
-            }
-            Ok(record) => {
-                let classification =
-                    database.classify(record.seq(), cutoff_threshold, args.max_queries);
-                let mut writer = output_writer.lock().unwrap();
-                match classification {
-                    Some((file, taxid)) => {
-                        writer
-                            .write(format!("{}\t{}\t{}\n", record.id(), file, taxid).as_bytes())
-                            .expect("could not write to output file");
+        .for_each(|chunk| {
+            // Initialize the number of hits vector for the chunk
+            let mut num_hits = vec![0_u64; database.num_files()];
+
+            for record_result in chunk {
+                match record_result {
+                    Err(_) => {
+                        warn!("error encountered while reading fastq file");
+                        warn!("skipping the read that caused the error")
                     }
-                    None => {
-                        writer
-                            .write(format!("{}\tU\t0\n", record.id()).as_bytes())
-                            .expect("could not write to output file");
+                    Ok(record) => {
+                        let classification = database.classify(
+                            &mut num_hits,
+                            record.seq(),
+                            cutoff_threshold,
+                            args.max_queries,
+                        );
+
+                        // After one read classification, reset the hit counts
+                        num_hits.fill(0);
+
+                        // Write classification result to output file
+                        let mut writer = output_writer.lock().unwrap();
+                        match classification {
+                            Some((file, taxid)) => {
+                                writer
+                                    .write(
+                                        format!("{}\t{}\t{}\n", record.id(), file, taxid)
+                                            .as_bytes(),
+                                    )
+                                    .expect("could not write to output file");
+                            }
+                            None => {
+                                writer
+                                    .write(format!("{}\tU\t0\n", record.id()).as_bytes())
+                                    .expect("could not write to output file");
+                            }
+                        };
                     }
-                };
-            }
+                } // end match
+            } // end for
         });
 
     info!("done!");
