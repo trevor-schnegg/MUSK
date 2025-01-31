@@ -18,8 +18,8 @@ fn main() {
     // warn!("This should be captured only by stderr");
     // error!("This should be captured only by stderr");
 
-    let assembly_count = 10_000;
-    let n = 200;
+    let assembly_count = 50_000;
+    let n = 180;
 
     let dist = Uniform::new(0.0, 0.01).unwrap();
     let mut rng = rand::rng();

@@ -65,6 +65,9 @@ fn main() {
     info!("loading database at {:?}", database_path);
     let database = load_data_from_file::<Database>(database_path);
 
+    info!("computing lookup table...");
+    let lookup_table = database.compute_loookup_table(args.max_queries);
+
     info!("classifying reads...");
     let read_iter = get_fastq_iter_of_file(reads_path);
     let start_time = Instant::now();
@@ -78,8 +81,12 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, (hit_lookup_time, prob_calc_time)) =
-                    database.classify(record.seq(), cutoff_threshold, args.max_queries);
+                let (classification, (hit_lookup_time, prob_calc_time)) = database.classify(
+                    record.seq(),
+                    cutoff_threshold,
+                    args.max_queries,
+                    &lookup_table,
+                );
 
                 {
                     let mut total_hit_lookup_time = total_hit_lookup_time.lock().unwrap();

@@ -1,4 +1,4 @@
-use num_traits::One;
+use num_traits::{One, Zero};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
@@ -117,6 +117,30 @@ impl Database {
             kmer_to_rle_index,
             p_values,
         }
+    }
+
+    pub fn compute_loookup_table(&self, n_max: u64) -> Vec<BigExpFloat> {
+        let mut lookup_table = vec![BigExpFloat::zero(); self.num_files() * n_max as usize];
+        lookup_table
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(index, placeholder_float)| {
+                let (file_num, x) = (index / n_max as usize, (index % n_max as usize) as u64);
+                let p = self.p_values[file_num];
+                let prob_f64 = Binomial::new(p, n_max).unwrap().sf(x);
+
+                // If the probability is greater than 0.0, use it
+                let prob_big_exp = if prob_f64 > 0.0 {
+                    BigExpFloat::from_f64(prob_f64)
+                } else {
+                    // Otherwise, compute the probability using big exp
+                    sf(p, n_max, x, &self.consts)
+                };
+
+                *placeholder_float = prob_big_exp;
+            });
+
+        lookup_table
     }
 
     pub fn lossy_compression(&mut self, compression_level: usize) -> () {
@@ -325,6 +349,7 @@ impl Database {
         read: &[u8],
         cutoff_threshold: BigExpFloat,
         n_max: u64,
+        lookup_table: &Vec<BigExpFloat>,
     ) -> (Option<(&str, usize)>, (f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
@@ -366,18 +391,23 @@ impl Database {
 
                     let n = if n_total <= n_max { n_total } else { n_max };
 
-                    // Perform the computation using f64
-                    let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
-
-                    // If the probability is greater than 0.0, use it
-                    let prob_big_exp = if prob_f64 > 0.0 {
-                        BigExpFloat::from_f64(prob_f64)
+                    if n == n_max {
+                        let lookup_position = (index * n_max as usize) + x as usize;
+                        Some((index, lookup_table[lookup_position]))
                     } else {
-                        // Otherwise, compute the probability using big exp
-                        sf(*p, n, x, &self.consts)
-                    };
+                        // Perform the computation using f64
+                        let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
 
-                    Some((index, prob_big_exp))
+                        // If the probability is greater than 0.0, use it
+                        let prob_big_exp = if prob_f64 > 0.0 {
+                            BigExpFloat::from_f64(prob_f64)
+                        } else {
+                            // Otherwise, compute the probability using big exp
+                            sf(*p, n, x, &self.consts)
+                        };
+
+                        Some((index, prob_big_exp))
+                    }
                 } else {
                     // If there were less than a significant number of hits, don't compute
                     None
