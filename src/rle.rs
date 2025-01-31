@@ -312,6 +312,9 @@ impl<'a> RunLengthEncodingIter<'a> {
                     return Some(next_value);
                 }
                 Block::Uncompressed(bits) => {
+                    if bits == 0 {
+                        panic!("wtf");
+                    }
                     // If the run is uncompressed, create new curr_run_iter over it
                     let mut next_iter = BitIter::from(bits);
                     let next_value = next_iter.next().unwrap() + self.curr_i;
