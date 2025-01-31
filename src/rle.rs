@@ -1,6 +1,6 @@
 use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
-use std::slice::Iter;
+use std::{ops::Range, slice::Iter};
 use tracing::warn;
 
 pub const MAX_RUN: u16 = (1 << 14) - 1;
@@ -270,10 +270,16 @@ fn decompress_buffer(buffer: &mut Vec<Block>) -> Block {
     Block::Uncompressed(decompressed)
 }
 
+enum CurrBlockIter {
+    None,
+    Range(Range<usize>),
+    BitIter(BitIter<u16>),
+}
+
 pub struct RunLengthEncodingIter<'a> {
     curr_i: usize,
     blocks_iter: Iter<'a, u16>,
-    curr_block_iter: Box<dyn Iterator<Item = usize> + 'a>,
+    curr_block_iter: CurrBlockIter,
 }
 
 impl<'a> RunLengthEncodingIter<'a> {
@@ -281,8 +287,46 @@ impl<'a> RunLengthEncodingIter<'a> {
         RunLengthEncodingIter {
             curr_i: 0,
             blocks_iter: blocks.iter(),
-            curr_block_iter: Box::new(0..0),
+            curr_block_iter: CurrBlockIter::None,
         }
+    }
+
+    fn next_iterator(&mut self) -> Option<usize> {
+        while let Some(run) = self.blocks_iter.next() {
+            match Block::from_u16(*run) {
+                Block::Zeros(zeroes_count) => {
+                    // If the run is zeros, add it to curr_i and look for the next run
+                    self.curr_i += zeroes_count as usize;
+                }
+                Block::Ones(ones_count) => {
+                    // If the run is ones, create a new curr_run_iter
+                    let mut next_iter = self.curr_i..self.curr_i + ones_count as usize;
+                    let next_value = next_iter.next().unwrap();
+                    self.curr_block_iter = CurrBlockIter::Range(next_iter);
+
+                    // Since each iteration of a range returns the correct value, increment the
+                    // curr_i now
+                    self.curr_i += ones_count as usize;
+
+                    // Return the next value
+                    return Some(next_value);
+                }
+                Block::Uncompressed(bits) => {
+                    // If the run is uncompressed, create new curr_run_iter over it
+                    let mut next_iter = BitIter::from(bits);
+                    let next_value = next_iter.next().unwrap() + self.curr_i;
+                    self.curr_block_iter = CurrBlockIter::BitIter(next_iter);
+
+                    // Since each iteration of a bit iter does NOT return the correct value, do NOT
+                    // increment the curr_i here
+
+                    // Break out of the while loop
+                    return Some(next_value);
+                }
+            }
+        }
+        // If there is no next block, reutrn None
+        None
     }
 }
 
@@ -290,37 +334,19 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.curr_block_iter.next() {
-            None => {
-                // Current block doesn't have any more to iterate - look for a new block
-                while let Some(run) = self.blocks_iter.next() {
-                    match Block::from_u16(*run) {
-                        Block::Zeros(zeros_count) => {
-                            // If the run is zeros, add it to curr_i and look for the next run
-                            self.curr_i += zeros_count as usize;
-                        }
-                        Block::Ones(ones_count) => {
-                            // If the run is ones, create a new curr_run_iter and return the first value
-                            self.curr_block_iter =
-                                Box::new(self.curr_i..self.curr_i + ones_count as usize);
-                            self.curr_i += ones_count as usize;
-                            return self.curr_block_iter.next();
-                        }
-                        Block::Uncompressed(bits) => {
-                            // If the run is uncompressed, create new curr_run_iter over it and return the first value
-                            let curr_i = self.curr_i.clone();
-                            self.curr_block_iter =
-                                Box::new(BitIter::from(bits).map(move |x| x + curr_i));
-                            self.curr_i += MAX_UNCOMPRESSED_BITS;
-                            return self.curr_block_iter.next();
-                        }
-                    }
+        match &mut self.curr_block_iter {
+            CurrBlockIter::None => self.next_iterator(),
+            CurrBlockIter::Range(range) => match range.next() {
+                Some(value) => Some(value),
+                None => self.next_iterator(),
+            },
+            CurrBlockIter::BitIter(bit_iter) => match bit_iter.next() {
+                Some(value) => Some(value + self.curr_i),
+                None => {
+                    self.curr_i += MAX_UNCOMPRESSED_BITS;
+                    self.next_iterator()
                 }
-                // If a new curr_run_iter cannot be found, return None
-                None
-            }
-            // Otherwise, if the current block has a value Some(_), simply return that
-            n => n,
+            },
         }
     }
 }
