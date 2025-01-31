@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
-use std::{collections::HashMap, u16, u32};
+use std::{collections::HashMap, time::Instant, u16, u32};
 use tracing::{debug, info};
 
 use crate::{
@@ -325,13 +325,14 @@ impl Database {
         read: &[u8],
         cutoff_threshold: BigExpFloat,
         n_max: u64,
-    ) -> Option<(&str, usize)> {
+    ) -> (Option<(&str, usize)>, (f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
 
         // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
 
+        let hit_lookup_start = Instant::now();
         // For each kmer in the read
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
             // Get the corresponding run-length encoding and increment those file counts
@@ -343,9 +344,11 @@ impl Database {
             // Increment the total number of queries
             n_total += 1;
         }
+        let hit_lookup_time = hit_lookup_start.elapsed().as_secs_f64();
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
+        let prob_calc_start = Instant::now();
         let (mut lowest_prob_index, mut lowest_prob) = (0, BigExpFloat::one());
         for (index, probability) in num_hits
             .iter()
@@ -387,14 +390,18 @@ impl Database {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
         }
+        let prob_calc_time = prob_calc_start.elapsed().as_secs_f64();
 
         if lowest_prob < cutoff_threshold {
-            Some((
-                &*self.files[lowest_prob_index],
-                self.tax_ids[lowest_prob_index],
-            ))
+            (
+                Some((
+                    &*self.files[lowest_prob_index],
+                    self.tax_ids[lowest_prob_index],
+                )),
+                (hit_lookup_time, prob_calc_time),
+            )
         } else {
-            None
+            (None, (hit_lookup_time, prob_calc_time))
         }
     }
 }

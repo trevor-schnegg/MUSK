@@ -10,7 +10,7 @@ use std::ops::Neg;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Instant;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Classifies the input reads using a musk database (.db/.cdb) file.
 /// Output is a readid2file (.r2f) mapping, including the taxid for the file if it was provided during database construction.
@@ -59,6 +59,9 @@ fn main() {
     // Create a mutex over a writer to allow multiple threads to write to the output file
     let output_writer = Mutex::new(BufWriter::new(output_file));
 
+    let total_hit_lookup_time = Mutex::new(0.0);
+    let total_prob_calc_time = Mutex::new(0.0);
+
     info!("loading database at {:?}", database_path);
     let database = load_data_from_file::<Database>(database_path);
 
@@ -75,8 +78,18 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let classification =
+                let (classification, (hit_lookup_time, prob_calc_time)) =
                     database.classify(record.seq(), cutoff_threshold, args.max_queries);
+
+                {
+                    let mut total_hit_lookup_time = total_hit_lookup_time.lock().unwrap();
+                    *total_hit_lookup_time += hit_lookup_time
+                }
+
+                {
+                    let mut total_prob_calc_time = total_prob_calc_time.lock().unwrap();
+                    *total_prob_calc_time += prob_calc_time
+                }
 
                 // Write classification result to output file
                 let mut writer = output_writer.lock().unwrap();
@@ -96,6 +109,15 @@ fn main() {
         });
     let classify_time = start_time.elapsed().as_secs_f64();
     info!("classification time: {} s", classify_time);
+
+    debug!(
+        "total hit lookup time: {}",
+        total_hit_lookup_time.into_inner().unwrap()
+    );
+    debug!(
+        "total probability calculation time: {}",
+        total_prob_calc_time.into_inner().unwrap()
+    );
 
     info!("done!");
 }
