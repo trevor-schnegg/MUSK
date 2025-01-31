@@ -291,7 +291,7 @@ impl<'a> RunLengthEncodingIter<'a> {
         }
     }
 
-    fn next_iterator(&mut self) -> Option<usize> {
+    fn find_next(&mut self) -> Option<usize> {
         while let Some(run) = self.blocks_iter.next() {
             match Block::from_u16(*run) {
                 Block::Zeros(zeroes_count) => {
@@ -312,10 +312,14 @@ impl<'a> RunLengthEncodingIter<'a> {
                     return Some(next_value);
                 }
                 Block::Uncompressed(bits) => {
+                    // Because of design choices, it is possible to have an empty
+                    // uncompressed run -- have to handle this case
                     if bits == 0 {
-                        panic!("wtf");
+                        self.curr_i += MAX_UNCOMPRESSED_BITS;
+                        continue;
                     }
-                    // If the run is uncompressed, create new curr_run_iter over it
+
+                    // Otherwise, create new curr_run_iter over it
                     let mut next_iter = BitIter::from(bits);
                     let next_value = next_iter.next().unwrap() + self.curr_i;
                     self.curr_block_iter = CurrBlockIter::BitIter(next_iter);
@@ -338,16 +342,16 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.curr_block_iter {
-            CurrBlockIter::None => self.next_iterator(),
+            CurrBlockIter::None => self.find_next(),
             CurrBlockIter::Range(range) => match range.next() {
                 Some(value) => Some(value),
-                None => self.next_iterator(),
+                None => self.find_next(),
             },
             CurrBlockIter::BitIter(bit_iter) => match bit_iter.next() {
                 Some(value) => Some(value + self.curr_i),
                 None => {
                     self.curr_i += MAX_UNCOMPRESSED_BITS;
-                    self.next_iterator()
+                    self.find_next()
                 }
             },
         }
