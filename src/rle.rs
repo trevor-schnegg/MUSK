@@ -300,16 +300,17 @@ impl<'a> RunLengthEncodingIter<'a> {
                 }
                 Block::Ones(ones_count) => {
                     // If the run is ones, create a new curr_run_iter
-                    let mut next_iter = self.curr_i..self.curr_i + ones_count as usize;
-                    let next_value = next_iter.next().unwrap();
-                    self.curr_block_iter = CurrBlockIter::Range(next_iter);
+                    self.curr_block_iter =
+                        CurrBlockIter::Range(self.curr_i..self.curr_i + ones_count as usize);
 
-                    // Since each iteration of a range returns the correct value, increment the
-                    // curr_i now
+                    // Increment curr_i
                     self.curr_i += ones_count as usize;
 
                     // Return the next value
-                    return Some(next_value);
+                    match &mut self.curr_block_iter {
+                        CurrBlockIter::Range(range) => return Some(range.next().unwrap()),
+                        _ => panic!("impossible case"),
+                    }
                 }
                 Block::Uncompressed(bits) => {
                     // Because of design choices, it is possible to have an empty
@@ -319,16 +320,19 @@ impl<'a> RunLengthEncodingIter<'a> {
                         continue;
                     }
 
-                    // Otherwise, create new curr_run_iter over it
-                    let mut next_iter = BitIter::from(bits);
-                    let next_value = next_iter.next().unwrap() + self.curr_i;
-                    self.curr_block_iter = CurrBlockIter::BitIter(next_iter);
+                    // Otherwise, create new curr_run_iter
+                    self.curr_block_iter = CurrBlockIter::BitIter(BitIter::from(bits));
 
-                    // Since each iteration of a bit iter does NOT return the correct value, do NOT
-                    // increment the curr_i here
+                    // Do NOT increment curr_i here. BitIter is 0 indexed and needs the curr_i to
+                    // return the correct value
 
-                    // Break out of the while loop
-                    return Some(next_value);
+                    // Return the next value
+                    match &mut self.curr_block_iter {
+                        CurrBlockIter::BitIter(bit_iter) => {
+                            return Some(bit_iter.next().unwrap() + self.curr_i)
+                        }
+                        _ => panic!("impossible case"),
+                    }
                 }
             }
         }
@@ -344,12 +348,13 @@ impl<'a> Iterator for RunLengthEncodingIter<'a> {
         match &mut self.curr_block_iter {
             CurrBlockIter::None => self.find_next(),
             CurrBlockIter::Range(range) => match range.next() {
-                Some(value) => Some(value),
                 None => self.find_next(),
+                x => x,
             },
             CurrBlockIter::BitIter(bit_iter) => match bit_iter.next() {
                 Some(value) => Some(value + self.curr_i),
                 None => {
+                    // Increment curr_i after a BitIter is exhausted
                     self.curr_i += MAX_UNCOMPRESSED_BITS;
                     self.find_next()
                 }

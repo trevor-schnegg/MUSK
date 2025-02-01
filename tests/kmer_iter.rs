@@ -18,9 +18,9 @@ fn sequence_conversion() {
         0b_10_01_10_00_10_01_00_00_11_01_00_00_00_11,
         0b_01_10_00_10_01_00_00_11_01_00_00_00_11_11,
     ];
-    for (iter_kmer, true_kmer) in
-        KmerIter::from(sequence.as_bytes(), 14, false).zip(sequence_kmers.into_iter())
-    {
-        assert_eq!(iter_kmer, true_kmer);
-    }
+    KmerIter::from(sequence.as_bytes(), 14, false)
+        .zip(sequence_kmers.into_iter())
+        .for_each(|(iter_kmer, true_kmer)| {
+            assert_eq!(iter_kmer, true_kmer);
+        })
 }
