@@ -363,7 +363,8 @@ impl Database {
             // Get the corresponding run-length encoding and increment those file counts
             if let Some(rle_index) = self.kmer_to_rle_index.get(&(kmer as u32)) {
                 self.rles[*rle_index as usize]
-                    .iter()
+                    .collect_indices()
+                    .into_iter()
                     .for_each(|file_index| num_hits[file_index] += 1);
             }
             // Increment the total number of queries
