@@ -126,5 +126,11 @@ fn main() {
         total_prob_calc_time.into_inner().unwrap()
     );
 
+    output_writer
+        .into_inner()
+        .expect("could not reclaim file writer at the end of execution")
+        .flush()
+        .expect("could not write to output file");
+
     info!("done!");
 }

@@ -1,7 +1,8 @@
+use itertools::Itertools;
 use musk::kmer_iter::KmerIter;
 
 #[test]
-fn sequence_conversion() {
+fn non_canonical() {
     let sequence = "CGATTAAAGATAGAAATACACGNTGCGAGCAATCAAATT";
     // according to A = 00, C = 01, G = 10, T = 11 and a kmer size of 14
     let sequence_kmers: Vec<usize> = vec![
@@ -18,9 +19,34 @@ fn sequence_conversion() {
         0b_10_01_10_00_10_01_00_00_11_01_00_00_00_11,
         0b_01_10_00_10_01_00_00_11_01_00_00_00_11_11,
     ];
-    KmerIter::from(sequence.as_bytes(), 14, false)
-        .zip(sequence_kmers.into_iter())
-        .for_each(|(iter_kmer, true_kmer)| {
-            assert_eq!(iter_kmer, true_kmer);
-        })
+
+    assert_eq!(
+        sequence_kmers,
+        KmerIter::from(sequence.as_bytes(), 14, false).collect_vec()
+    );
+}
+
+#[test]
+fn canonical() {
+    let sequence = "CGATTAAAGATAGAAATACACGNTGCGAGCAATCAAATT";
+    // according to A = 00, C = 01, G = 10, T = 11 and a kmer size of 14
+    let sequence_kmers: Vec<usize> = vec![
+        0b_01_10_00_11_11_00_00_00_10_00_11_00_10_00,
+        0b_10_00_11_11_00_00_00_10_00_11_00_10_00_00,
+        0b_00_11_11_00_00_00_10_00_11_00_10_00_00_00,
+        0b_00_11_11_11_01_11_00_11_01_11_11_11_00_00,
+        0b_11_00_00_00_10_00_11_00_10_00_00_00_11_00,
+        0b_00_00_00_10_00_11_00_10_00_00_00_11_00_01,
+        0b_00_00_10_00_11_00_10_00_00_00_11_00_01_00,
+        0b_00_10_00_11_00_10_00_00_00_11_00_01_00_01,
+        0b_01_10_11_10_11_00_11_11_11_01_11_00_11_01,
+        0b_11_10_01_10_00_10_01_00_00_11_01_00_00_00,
+        0b_00_11_11_11_10_00_11_11_10_01_11_01_10_01,
+        0b_00_00_11_11_11_10_00_11_11_10_01_11_01_10,
+    ];
+
+    assert_eq!(
+        sequence_kmers,
+        KmerIter::from(sequence.as_bytes(), 14, true).collect_vec()
+    );
 }
