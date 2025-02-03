@@ -120,12 +120,18 @@ impl Database {
     }
 
     pub fn compute_loookup_table(&self, n_max: u64) -> Vec<BigExpFloat> {
-        let mut lookup_table = vec![BigExpFloat::zero(); self.num_files() * n_max as usize];
+        // Including 0 hits, there are n_max + 1 total possible values for the number of hits
+        let possible_hit_numbers = (n_max + 1) as usize;
+
+        let mut lookup_table = vec![BigExpFloat::zero(); self.num_files() * possible_hit_numbers];
         lookup_table
             .par_iter_mut()
             .enumerate()
             .for_each(|(index, placeholder_float)| {
-                let (file_num, x) = (index / n_max as usize, (index % n_max as usize) as u64);
+                let (file_num, x) = (
+                    index / possible_hit_numbers,
+                    (index % possible_hit_numbers) as u64,
+                );
                 let p = self.p_values[file_num];
                 let prob_f64 = Binomial::new(p, n_max).unwrap().sf(x);
 
@@ -393,7 +399,7 @@ impl Database {
                     let n = if n_total <= n_max { n_total } else { n_max };
 
                     if n == n_max {
-                        let lookup_position = (index * n_max as usize) + x as usize;
+                        let lookup_position = (index * (n_max + 1) as usize) + x as usize;
                         Some((index, lookup_table[lookup_position]))
                     } else {
                         // Perform the computation using f64
@@ -410,7 +416,8 @@ impl Database {
                         Some((index, prob_big_exp))
                     }
                 } else {
-                    // If there were less than a significant number of hits, don't compute
+                    // The p-value will be greater than 0.5 (insignificant)
+                    // Don't compute or lookup
                     None
                 }
             })
