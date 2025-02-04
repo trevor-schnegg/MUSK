@@ -59,6 +59,7 @@ fn main() {
     // Create a mutex over a writer to allow multiple threads to write to the output file
     let output_writer = Mutex::new(BufWriter::new(output_file));
 
+    let total_kmer_calculation_time = Mutex::new(0.0);
     let total_hit_lookup_time = Mutex::new(0.0);
     let total_prob_calc_time = Mutex::new(0.0);
 
@@ -81,21 +82,28 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, (hit_lookup_time, prob_calc_time)) = database.classify(
-                    record.seq(),
-                    cutoff_threshold,
-                    args.max_queries,
-                    &lookup_table,
-                );
+                let (classification, (kmer_calculation_time, hit_lookup_time, prob_calc_time)) =
+                    database.classify(
+                        record.seq(),
+                        cutoff_threshold,
+                        args.max_queries,
+                        &lookup_table,
+                    );
+
+                {
+                    let mut total_kmer_calculation_time =
+                        total_kmer_calculation_time.lock().unwrap();
+                    *total_kmer_calculation_time += kmer_calculation_time;
+                }
 
                 {
                     let mut total_hit_lookup_time = total_hit_lookup_time.lock().unwrap();
-                    *total_hit_lookup_time += hit_lookup_time
+                    *total_hit_lookup_time += hit_lookup_time;
                 }
 
                 {
                     let mut total_prob_calc_time = total_prob_calc_time.lock().unwrap();
-                    *total_prob_calc_time += prob_calc_time
+                    *total_prob_calc_time += prob_calc_time;
                 }
 
                 // Write classification result to output file
@@ -117,6 +125,10 @@ fn main() {
     let classify_time = start_time.elapsed().as_secs_f64();
     info!("classification time: {} s", classify_time);
 
+    debug!(
+        "total k-mer calculation time: {}",
+        total_kmer_calculation_time.into_inner().unwrap()
+    );
     debug!(
         "total hit lookup time: {}",
         total_hit_lookup_time.into_inner().unwrap()

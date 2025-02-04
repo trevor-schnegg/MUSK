@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use num_traits::{One, Zero};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -356,16 +357,20 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-    ) -> (Option<(&str, usize)>, (f64, f64)) {
+    ) -> (Option<(&str, usize)>, (f64, f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
 
         // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
 
-        let hit_lookup_start = Instant::now();
         // For each kmer in the read
-        for kmer in KmerIter::from(read, self.kmer_len, self.canonical) {
+        let kmer_calculation_start = Instant::now();
+        let kmers = KmerIter::from(read, self.kmer_len, self.canonical).collect_vec();
+        let kmer_calculation_time = kmer_calculation_start.elapsed().as_secs_f64();
+
+        let hit_lookup_start = Instant::now();
+        for kmer in kmers {
             // Get the corresponding run-length encoding and increment those file counts
             if let Some(rle_index) = self.kmer_to_rle_index.get(&(kmer as u32)) {
                 self.rles[*rle_index as usize]
@@ -436,10 +441,13 @@ impl Database {
                     &*self.files[lowest_prob_index],
                     self.tax_ids[lowest_prob_index],
                 )),
-                (hit_lookup_time, prob_calc_time),
+                (kmer_calculation_time, hit_lookup_time, prob_calc_time),
             )
         } else {
-            (None, (hit_lookup_time, prob_calc_time))
+            (
+                None,
+                (kmer_calculation_time, hit_lookup_time, prob_calc_time),
+            )
         }
     }
 }
