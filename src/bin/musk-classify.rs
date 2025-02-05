@@ -5,6 +5,7 @@ use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fastq_iter_of_file;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::ops::Neg;
 use std::path::Path;
@@ -63,8 +64,7 @@ fn main() {
     // Create a mutex over a writer to allow multiple threads to write to the output file
     let output_writer = Mutex::new(BufWriter::new(output_file));
 
-    let total_hit_lookup_time = Mutex::new(0.0);
-    let total_prob_calc_time = Mutex::new(0.0);
+    let total_times_map = Mutex::new(HashMap::new());
 
     info!("loading database at {:?}", database_path);
     let database = load_data_from_file::<Database>(database_path);
@@ -85,7 +85,7 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, (hit_lookup_time, prob_calc_time)) = database.classify(
+                let (classification, times) = database.classify(
                     record.seq(),
                     cutoff_threshold,
                     args.max_queries,
@@ -93,13 +93,15 @@ fn main() {
                 );
 
                 {
-                    let mut total_hit_lookup_time = total_hit_lookup_time.lock().unwrap();
-                    *total_hit_lookup_time += hit_lookup_time
-                }
-
-                {
-                    let mut total_prob_calc_time = total_prob_calc_time.lock().unwrap();
-                    *total_prob_calc_time += prob_calc_time
+                    let mut total_times_map = total_times_map.lock().unwrap();
+                    for (msg, time) in times {
+                        match total_times_map.get_mut(msg) {
+                            None => {
+                                total_times_map.insert(msg, time);
+                            }
+                            Some(total_time) => *total_time += time,
+                        }
+                    }
                 }
 
                 // Write classification result to output file
@@ -121,14 +123,9 @@ fn main() {
     let classify_time = start_time.elapsed().as_secs_f64();
     info!("classification time: {} s", classify_time);
 
-    debug!(
-        "total hit lookup time: {}",
-        total_hit_lookup_time.into_inner().unwrap()
-    );
-    debug!(
-        "total probability calculation time: {}",
-        total_prob_calc_time.into_inner().unwrap()
-    );
+    for (msg, total_time) in total_times_map.into_inner().unwrap() {
+        debug!("total {}: {}", msg, total_time);
+    }
 
     output_writer
         .into_inner()

@@ -356,7 +356,9 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-    ) -> (Option<(&str, usize)>, (f64, f64)) {
+    ) -> (Option<(&str, usize)>, Vec<(&str, f64)>) {
+        let mut times = vec![];
+
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
 
@@ -365,20 +367,34 @@ impl Database {
 
         let hit_lookup_start = Instant::now();
 
+        let mut total_collect_indices_time = 0.0;
+        let mut total_increment_counts_time = 0.0;
+
         // For each kmer in the read
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|k| k as u32) {
             // Lookup the RLE and decompress
             if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
-                self.rles[*rle_index as usize]
-                    .collect_indices()
-                    .iter()
-                    .for_each(|i| num_hits[*i as usize] += 1);
+                let rle = &self.rles[*rle_index as usize];
+
+                let rle_collect_indices_start = Instant::now();
+                let indicies = rle.collect_indices();
+                total_collect_indices_time += rle_collect_indices_start.elapsed().as_secs_f64();
+
+                let increment_counts_start = Instant::now();
+                indicies.iter().for_each(|i| num_hits[*i as usize] += 1);
+                total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
             }
             // Increment the total number of queries
             n_total += 1;
         }
 
-        let hit_lookup_time = hit_lookup_start.elapsed().as_secs_f64();
+        times.push(("time to collect indices", total_collect_indices_time));
+        times.push(("time to increment counts", total_increment_counts_time));
+
+        times.push((
+            "time to lookup k-mers",
+            hit_lookup_start.elapsed().as_secs_f64(),
+        ));
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
@@ -430,7 +446,10 @@ impl Database {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
         }
-        let prob_calc_time = prob_calc_start.elapsed().as_secs_f64();
+        times.push((
+            "time to calculate probabilities",
+            prob_calc_start.elapsed().as_secs_f64(),
+        ));
 
         if lowest_prob < cutoff_threshold {
             (
@@ -438,10 +457,10 @@ impl Database {
                     &*self.files[lowest_prob_index],
                     self.tax_ids[lowest_prob_index],
                 )),
-                (hit_lookup_time, prob_calc_time),
+                times,
             )
         } else {
-            (None, (hit_lookup_time, prob_calc_time))
+            (None, times)
         }
     }
 }
