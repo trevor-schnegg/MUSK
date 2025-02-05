@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use moka::sync::Cache;
 use num_traits::{One, Zero};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -357,30 +357,34 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-    ) -> (Option<(&str, usize)>, (f64, f64, f64)) {
+        kmer_cache: Cache<u32, Box<[usize]>>,
+    ) -> (Option<(&str, usize)>, (f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
 
         // Create a variable to track the total number of kmers queried
         let mut n_total = 0_u64;
 
-        // For each kmer in the read
-        let kmer_calculation_start = Instant::now();
-        let kmers = KmerIter::from(read, self.kmer_len, self.canonical).collect_vec();
-        let kmer_calculation_time = kmer_calculation_start.elapsed().as_secs_f64();
-
         let hit_lookup_start = Instant::now();
-        for kmer in kmers {
+
+        // For each kmer in the read
+        for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|k| k as u32) {
             // Get the corresponding run-length encoding and increment those file counts
-            if let Some(rle_index) = self.kmer_to_rle_index.get(&(kmer as u32)) {
-                self.rles[*rle_index as usize]
-                    .collect_indices()
-                    .into_iter()
-                    .for_each(|file_index| num_hits[file_index] += 1);
+            if let Some(file_indices) = kmer_cache.get(&kmer) {
+                // There was a cache hit
+                file_indices.iter().for_each(|i| num_hits[*i] += 1);
+            } else {
+                // There was not a cache hit, lookup the RLE and decompress
+                if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
+                    let file_indices = self.rles[*rle_index as usize].collect_indices();
+                    file_indices.iter().for_each(|i| num_hits[*i] += 1);
+                    kmer_cache.insert(kmer, file_indices);
+                }
             }
             // Increment the total number of queries
             n_total += 1;
         }
+
         let hit_lookup_time = hit_lookup_start.elapsed().as_secs_f64();
 
         // Classify the hits
@@ -441,13 +445,10 @@ impl Database {
                     &*self.files[lowest_prob_index],
                     self.tax_ids[lowest_prob_index],
                 )),
-                (kmer_calculation_time, hit_lookup_time, prob_calc_time),
+                (hit_lookup_time, prob_calc_time),
             )
         } else {
-            (
-                None,
-                (kmer_calculation_time, hit_lookup_time, prob_calc_time),
-            )
+            (None, (hit_lookup_time, prob_calc_time))
         }
     }
 }

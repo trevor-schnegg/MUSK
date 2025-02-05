@@ -1,4 +1,5 @@
 use clap::Parser;
+use moka::sync::Cache;
 use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
@@ -59,7 +60,6 @@ fn main() {
     // Create a mutex over a writer to allow multiple threads to write to the output file
     let output_writer = Mutex::new(BufWriter::new(output_file));
 
-    let total_kmer_calculation_time = Mutex::new(0.0);
     let total_hit_lookup_time = Mutex::new(0.0);
     let total_prob_calc_time = Mutex::new(0.0);
 
@@ -73,6 +73,8 @@ fn main() {
     let read_iter = get_fastq_iter_of_file(reads_path);
     let start_time = Instant::now();
 
+    let kmer_cache = Cache::new(10_000);
+
     read_iter
         .par_bridge()
         .into_par_iter()
@@ -82,28 +84,22 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, (kmer_calculation_time, hit_lookup_time, prob_calc_time)) =
-                    database.classify(
-                        record.seq(),
-                        cutoff_threshold,
-                        args.max_queries,
-                        &lookup_table,
-                    );
-
-                {
-                    let mut total_kmer_calculation_time =
-                        total_kmer_calculation_time.lock().unwrap();
-                    *total_kmer_calculation_time += kmer_calculation_time;
-                }
+                let (classification, (hit_lookup_time, prob_calc_time)) = database.classify(
+                    record.seq(),
+                    cutoff_threshold,
+                    args.max_queries,
+                    &lookup_table,
+                    kmer_cache.clone(),
+                );
 
                 {
                     let mut total_hit_lookup_time = total_hit_lookup_time.lock().unwrap();
-                    *total_hit_lookup_time += hit_lookup_time;
+                    *total_hit_lookup_time += hit_lookup_time
                 }
 
                 {
                     let mut total_prob_calc_time = total_prob_calc_time.lock().unwrap();
-                    *total_prob_calc_time += prob_calc_time;
+                    *total_prob_calc_time += prob_calc_time
                 }
 
                 // Write classification result to output file
@@ -125,10 +121,6 @@ fn main() {
     let classify_time = start_time.elapsed().as_secs_f64();
     info!("classification time: {} s", classify_time);
 
-    debug!(
-        "total k-mer calculation time: {}",
-        total_kmer_calculation_time.into_inner().unwrap()
-    );
     debug!(
         "total hit lookup time: {}",
         total_hit_lookup_time.into_inner().unwrap()

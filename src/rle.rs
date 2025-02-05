@@ -265,7 +265,7 @@ impl RunLengthEncoding {
         }
     }
 
-    pub fn collect_indices(&self) -> Vec<usize> {
+    pub fn collect_indices(&self) -> Box<[usize]> {
         // Create the blocks iterator
         let mut blocks_iter = self
             .blocks
@@ -290,7 +290,7 @@ impl RunLengthEncoding {
                 }
             }
         }
-        indices
+        indices.into_boxed_slice()
     }
 }
 
