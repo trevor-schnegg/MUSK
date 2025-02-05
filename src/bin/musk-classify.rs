@@ -1,5 +1,4 @@
 use clap::Parser;
-use moka::sync::Cache;
 use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
@@ -77,8 +76,6 @@ fn main() {
     let read_iter = get_fastq_iter_of_file(reads_path);
     let start_time = Instant::now();
 
-    let kmer_cache = Cache::new(args.cache_size);
-
     read_iter
         .par_bridge()
         .into_par_iter()
@@ -93,7 +90,6 @@ fn main() {
                     cutoff_threshold,
                     args.max_queries,
                     &lookup_table,
-                    kmer_cache.clone(),
                 );
 
                 {
