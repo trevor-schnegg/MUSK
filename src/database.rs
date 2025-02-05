@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
-use std::{collections::HashMap, time::Instant, u16, u32};
+use std::{collections::HashMap, sync::Arc, time::Instant, u16, u32};
 use tracing::{debug, info};
 
 use crate::{
@@ -357,7 +357,7 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-        kmer_cache: Cache<u32, Box<[usize]>>,
+        kmer_cache: Cache<u32, Arc<Box<[usize]>>>,
     ) -> (Option<(&str, usize)>, (f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
@@ -378,7 +378,7 @@ impl Database {
                 if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
                     let file_indices = self.rles[*rle_index as usize].collect_indices();
                     file_indices.iter().for_each(|i| num_hits[*i] += 1);
-                    kmer_cache.insert(kmer, file_indices);
+                    kmer_cache.insert(kmer, Arc::from(file_indices));
                 }
             }
             // Increment the total number of queries
