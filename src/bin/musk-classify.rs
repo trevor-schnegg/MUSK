@@ -19,6 +19,10 @@ use tracing::{debug, info, warn};
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
+    #[arg(short, long, default_value_t = 10_000, verbatim_doc_comment)]
+    // The number of k-mers to keep in the cache
+    cache_size: u64,
+
     #[arg(short, long, default_value_t = 6, verbatim_doc_comment)]
     /// The exponent 'e' used in the equation 10^{-e}.
     /// Any calculated p-value below 10^{-e} will result in a classification.
@@ -73,7 +77,7 @@ fn main() {
     let read_iter = get_fastq_iter_of_file(reads_path);
     let start_time = Instant::now();
 
-    let kmer_cache = Cache::new(10_000);
+    let kmer_cache = Cache::new(args.cache_size);
 
     read_iter
         .par_bridge()

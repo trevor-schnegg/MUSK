@@ -357,7 +357,7 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-        kmer_cache: Cache<u32, Arc<Box<[usize]>>>,
+        kmer_cache: Cache<u32, Arc<Box<[u32]>>>,
     ) -> (Option<(&str, usize)>, (f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
@@ -372,12 +372,12 @@ impl Database {
             // Get the corresponding run-length encoding and increment those file counts
             if let Some(file_indices) = kmer_cache.get(&kmer) {
                 // There was a cache hit
-                file_indices.iter().for_each(|i| num_hits[*i] += 1);
+                file_indices.iter().for_each(|i| num_hits[*i as usize] += 1);
             } else {
                 // There was not a cache hit, lookup the RLE and decompress
                 if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
                     let file_indices = self.rles[*rle_index as usize].collect_indices();
-                    file_indices.iter().for_each(|i| num_hits[*i] += 1);
+                    file_indices.iter().for_each(|i| num_hits[*i as usize] += 1);
                     kmer_cache.insert(kmer, Arc::from(file_indices));
                 }
             }
