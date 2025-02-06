@@ -1,5 +1,4 @@
 use bit_iter::BitIter;
-use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, slice::Iter};
 use tracing::warn;
@@ -266,7 +265,7 @@ impl RunLengthEncoding {
         }
     }
 
-    pub fn collect_indices(&self) -> RoaringBitmap {
+    pub fn collect_indices(&self) -> Vec<u32> {
         // Create the blocks iterator
         let mut blocks_iter = self
             .blocks
@@ -275,7 +274,7 @@ impl RunLengthEncoding {
 
         // Initialize curr_i and the return value
         let mut curr_i = 0_u32;
-        let mut indices = RoaringBitmap::new();
+        let mut indices = vec![];
 
         while let Some(block) = blocks_iter.next() {
             match block {
