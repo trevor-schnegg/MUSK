@@ -381,7 +381,7 @@ impl Database {
                 total_collect_indices_time += rle_collect_indices_start.elapsed().as_secs_f64();
 
                 let increment_counts_start = Instant::now();
-                indicies.iter().for_each(|i| num_hits[*i as usize] += 1);
+                indicies.into_iter().for_each(|index| num_hits[index] += 1);
                 total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
             }
             // Increment the total number of queries

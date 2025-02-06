@@ -265,7 +265,7 @@ impl RunLengthEncoding {
         }
     }
 
-    pub fn collect_indices(&self) -> Box<[u32]> {
+    pub fn collect_indices(&self) -> Vec<usize> {
         // Create the blocks iterator
         let mut blocks_iter = self
             .blocks
@@ -273,24 +273,24 @@ impl RunLengthEncoding {
             .map(|block_u16| Block::from_u16(*block_u16));
 
         // Initialize curr_i and the return value
-        let mut curr_i = 0_u32;
+        let mut curr_i = 0_usize;
         let mut indices = vec![];
 
         while let Some(block) = blocks_iter.next() {
             match block {
-                Block::Zeros(zeroes_count) => curr_i += zeroes_count as u32,
+                Block::Zeros(zeroes_count) => curr_i += zeroes_count as usize,
                 Block::Ones(ones_count) => {
-                    let ones_count = ones_count as u32;
+                    let ones_count = ones_count as usize;
                     indices.extend(curr_i..curr_i + ones_count);
                     curr_i += ones_count;
                 }
                 Block::Uncompressed(bits) => {
-                    indices.extend(BitIter::from(bits).map(|i| i as u32 + curr_i));
-                    curr_i += MAX_UNCOMPRESSED_BITS as u32;
+                    indices.extend(BitIter::from(bits).map(|i| i as usize + curr_i));
+                    curr_i += MAX_UNCOMPRESSED_BITS as usize;
                 }
             }
         }
-        indices.into_boxed_slice()
+        indices
     }
 }
 
