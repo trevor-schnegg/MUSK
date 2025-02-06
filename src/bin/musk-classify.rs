@@ -1,4 +1,5 @@
 use clap::Parser;
+use moka::sync::Cache;
 use musk::big_exp_float::BigExpFloat;
 use musk::database::Database;
 use musk::io::{create_output_file, load_data_from_file};
@@ -76,6 +77,11 @@ fn main() {
     let read_iter = get_fastq_iter_of_file(reads_path);
     let start_time = Instant::now();
 
+    let kmer_cache = Cache::new(100_000);
+
+    let total_queries = Mutex::new(0);
+    let total_cache_hits = Mutex::new(0);
+
     read_iter
         .par_bridge()
         .into_par_iter()
@@ -85,12 +91,20 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, times) = database.classify(
+                let (classification, times, (kmers_queried, cache_hits)) = database.classify(
                     record.seq(),
                     cutoff_threshold,
                     args.max_queries,
                     &lookup_table,
+                    kmer_cache.clone(),
                 );
+
+                {
+                    let mut total_queries = total_queries.lock().unwrap();
+                    let mut total_cache_hits = total_cache_hits.lock().unwrap();
+                    *total_queries += kmers_queried;
+                    *total_cache_hits += cache_hits;
+                }
 
                 {
                     let mut total_times_map = total_times_map.lock().unwrap();

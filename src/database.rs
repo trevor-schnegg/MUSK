@@ -1,9 +1,10 @@
+use moka::sync::Cache;
 use num_traits::{One, Zero};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
-use std::{collections::HashMap, time::Instant, u16, u32};
+use std::{collections::HashMap, sync::Arc, time::Instant, u16, u32};
 use tracing::{debug, info};
 
 use crate::{
@@ -356,7 +357,8 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-    ) -> (Option<(&str, usize)>, Vec<(&str, f64)>) {
+        kmer_cache: Cache<u32, Arc<Vec<u32>>>,
+    ) -> (Option<(&str, usize)>, Vec<(&str, f64)>, (u64, usize)) {
         let mut times = vec![];
 
         // Create a vector to store the hits
@@ -370,25 +372,39 @@ impl Database {
         let mut total_collect_indices_time = 0.0;
         let mut total_increment_counts_time = 0.0;
 
+        let mut cache_hits = 0;
+
         // For each kmer in the read
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|k| k as u32) {
-            // Lookup the RLE and decompress
-            if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
-                let rle = &self.rles[*rle_index as usize];
-
-                let rle_collect_indices_start = Instant::now();
-                let indicies = rle.collect_indices();
-                total_collect_indices_time += rle_collect_indices_start.elapsed().as_secs_f64();
-
-                let increment_counts_start = Instant::now();
+            if let Some(indicies) = kmer_cache.get(&kmer) {
+                // cache hit
                 indicies
-                    .into_iter()
-                    .for_each(|index| num_hits[index as usize] += 1);
-                total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
+                    .iter()
+                    .for_each(|index| num_hits[*index as usize] += 1);
+                cache_hits += 1;
+            } else {
+                // Lookup the RLE and decompress
+                if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
+                    let rle = &self.rles[*rle_index as usize];
+
+                    let rle_collect_indices_start = Instant::now();
+                    let indicies = rle.collect_indices();
+                    total_collect_indices_time += rle_collect_indices_start.elapsed().as_secs_f64();
+
+                    let increment_counts_start = Instant::now();
+                    indicies
+                        .iter()
+                        .for_each(|index| num_hits[*index as usize] += 1);
+                    total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
+
+                    kmer_cache.insert(kmer, Arc::new(indicies))
+                }
             }
             // Increment the total number of queries
             n_total += 1;
         }
+
+        debug!("kmers queried: {}, cache hits {}", n_total, cache_hits);
 
         times.push(("time to collect indices", total_collect_indices_time));
         times.push(("time to increment counts", total_increment_counts_time));
@@ -460,9 +476,10 @@ impl Database {
                     self.tax_ids[lowest_prob_index],
                 )),
                 times,
+                (n_total, cache_hits),
             )
         } else {
-            (None, times)
+            (None, times, (n_total, cache_hits))
         }
     }
 }
