@@ -358,8 +358,8 @@ impl Database {
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
         kmer_cache: Cache<u32, Arc<Vec<u32>>>,
-    ) -> (Option<(&str, usize)>, Vec<(&str, f64)>, (u64, usize)) {
-        let mut times = vec![];
+    ) -> (Option<(&str, usize)>, Vec<(&str, f64)>) {
+        let mut stats = vec![];
 
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
@@ -403,14 +403,16 @@ impl Database {
             // Increment the total number of queries
             n_total += 1;
         }
-
-        times.push(("time to collect indices", total_collect_indices_time));
-        times.push(("time to increment counts", total_increment_counts_time));
-
-        times.push((
+        stats.push((
             "time to lookup k-mers",
             hit_lookup_start.elapsed().as_secs_f64(),
         ));
+
+        stats.push(("time to collect indices", total_collect_indices_time));
+        stats.push(("time to increment counts", total_increment_counts_time));
+
+        stats.push(("kmer queries", n_total as f64));
+        stats.push(("cache hits", cache_hits as f64));
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
@@ -462,7 +464,7 @@ impl Database {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
         }
-        times.push((
+        stats.push((
             "time to calculate probabilities",
             prob_calc_start.elapsed().as_secs_f64(),
         ));
@@ -473,11 +475,10 @@ impl Database {
                     &*self.files[lowest_prob_index],
                     self.tax_ids[lowest_prob_index],
                 )),
-                times,
-                (n_total, cache_hits),
+                stats,
             )
         } else {
-            (None, times, (n_total, cache_hits))
+            (None, stats)
         }
     }
 }

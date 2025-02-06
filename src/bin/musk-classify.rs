@@ -65,7 +65,7 @@ fn main() {
     // Create a mutex over a writer to allow multiple threads to write to the output file
     let output_writer = Mutex::new(BufWriter::new(output_file));
 
-    let total_times_map = Mutex::new(HashMap::new());
+    let total_stats_map = Mutex::new(HashMap::new());
 
     info!("loading database at {:?}", database_path);
     let database = load_data_from_file::<Database>(database_path);
@@ -91,7 +91,7 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, times, (kmers_queried, cache_hits)) = database.classify(
+                let (classification, stats) = database.classify(
                     record.seq(),
                     cutoff_threshold,
                     args.max_queries,
@@ -100,20 +100,13 @@ fn main() {
                 );
 
                 {
-                    let mut total_queries = total_queries.lock().unwrap();
-                    let mut total_cache_hits = total_cache_hits.lock().unwrap();
-                    *total_queries += kmers_queried;
-                    *total_cache_hits += cache_hits;
-                }
-
-                {
-                    let mut total_times_map = total_times_map.lock().unwrap();
-                    for (msg, time) in times {
-                        match total_times_map.get_mut(msg) {
+                    let mut total_stats_map = total_stats_map.lock().unwrap();
+                    for (msg, stat) in stats {
+                        match total_stats_map.get_mut(msg) {
                             None => {
-                                total_times_map.insert(msg, time);
+                                total_stats_map.insert(msg, stat);
                             }
-                            Some(total_time) => *total_time += time,
+                            Some(total_stat) => *total_stat += stat,
                         }
                     }
                 }
@@ -143,8 +136,8 @@ fn main() {
         total_cache_hits.into_inner().unwrap()
     );
 
-    for (msg, total_time) in total_times_map.into_inner().unwrap() {
-        debug!("total {}: {}", msg, total_time);
+    for (msg, total_stat) in total_stats_map.into_inner().unwrap() {
+        debug!("total {}: {}", msg, total_stat);
     }
 
     output_writer
