@@ -404,8 +404,6 @@ impl Database {
             n_total += 1;
         }
 
-        debug!("kmers queried: {}, cache hits {}", n_total, cache_hits);
-
         times.push(("time to collect indices", total_collect_indices_time));
         times.push(("time to increment counts", total_increment_counts_time));
 

@@ -20,7 +20,7 @@ use tracing::{debug, info, warn};
 #[clap(version, about)]
 #[clap(author = "Trevor S. <trevor.schneggenburger@gmail.com>")]
 struct Args {
-    #[arg(short, long, default_value_t = 10_000, verbatim_doc_comment)]
+    #[arg(short, long, default_value_t = 1_000, verbatim_doc_comment)]
     // The number of k-mers to keep in the cache
     cache_size: u64,
 
@@ -77,7 +77,7 @@ fn main() {
     let read_iter = get_fastq_iter_of_file(reads_path);
     let start_time = Instant::now();
 
-    let kmer_cache = Cache::new(100_000);
+    let kmer_cache = Cache::new(args.cache_size);
 
     let total_queries = Mutex::new(0);
     let total_cache_hits = Mutex::new(0);
@@ -136,6 +136,12 @@ fn main() {
         });
     let classify_time = start_time.elapsed().as_secs_f64();
     info!("classification time: {} s", classify_time);
+
+    debug!(
+        "total k-mers queried: {}, total cache hits {}",
+        total_queries.into_inner().unwrap(),
+        total_cache_hits.into_inner().unwrap()
+    );
 
     for (msg, total_time) in total_times_map.into_inner().unwrap() {
         debug!("total {}: {}", msg, total_time);
