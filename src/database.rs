@@ -1,10 +1,9 @@
-use moka::sync::Cache;
 use num_traits::{One, Zero};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{Binomial, DiscreteCDF};
-use std::{collections::HashMap, sync::Arc, time::Instant, u16, u32};
+use std::{collections::HashMap, time::Instant, u16, u32};
 use tracing::{debug, info};
 
 use crate::{
@@ -12,7 +11,9 @@ use crate::{
     binomial_sf::sf,
     consts::BinomialConsts,
     kmer_iter::KmerIter,
-    rle::{Block, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS},
+    rle::{
+        Block, BlockIter, NaiveRunLengthEncoding, RunLengthEncoding, MAX_RUN, MAX_UNCOMPRESSED_BITS,
+    },
 };
 
 #[derive(Serialize, Deserialize)]
@@ -336,12 +337,22 @@ impl Database {
         let total_canonical_kmers =
             (4_usize.pow(self.kmer_len as u32) - 4_usize.pow(self.kmer_len.div_ceil(2) as u32)) / 2;
 
-        let mut file2kmer_num = vec![0_usize; self.files.len()];
+        let mut file2kmer_num = vec![0_usize; self.num_files()];
 
-        for rle in self.rles.iter() {
-            rle.iter()
-                .for_each(|file_index| file2kmer_num[file_index] += 1);
-        }
+        self.rles.iter().for_each(|rle| {
+            rle.iter().for_each(|block_iter| match block_iter {
+                BlockIter::BitIter((bit_iter, start_i)) => {
+                    bit_iter.map(|i| i + start_i).for_each(|i| {
+                        file2kmer_num[i] += 1;
+                    });
+                }
+                BlockIter::Range((start_i, end_i)) => {
+                    file2kmer_num[start_i..end_i].iter_mut().for_each(|count| {
+                        *count += 1;
+                    });
+                }
+            });
+        });
 
         let p_values = file2kmer_num
             .into_par_iter()
@@ -357,7 +368,6 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-        kmer_cache: Cache<u32, Arc<Vec<u32>>>,
     ) -> (Option<(&str, usize)>, Vec<(&str, f64)>) {
         let mut stats = vec![];
 
@@ -369,36 +379,28 @@ impl Database {
 
         let hit_lookup_start = Instant::now();
 
-        let mut total_collect_indices_time = 0.0;
         let mut total_increment_counts_time = 0.0;
-
-        let mut cache_hits = 0;
 
         // For each kmer in the read
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|k| k as u32) {
-            if let Some(indicies) = kmer_cache.get(&kmer) {
-                // cache hit
-                indicies
+            // Lookup the RLE and decompress
+            if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
+                let increment_counts_start = Instant::now();
+                self.rles[*rle_index as usize]
                     .iter()
-                    .for_each(|index| num_hits[*index as usize] += 1);
-                cache_hits += 1;
-            } else {
-                // Lookup the RLE and decompress
-                if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
-                    let rle = &self.rles[*rle_index as usize];
-
-                    let rle_collect_indices_start = Instant::now();
-                    let indicies = rle.collect_indices();
-                    total_collect_indices_time += rle_collect_indices_start.elapsed().as_secs_f64();
-
-                    let increment_counts_start = Instant::now();
-                    indicies
-                        .iter()
-                        .for_each(|index| num_hits[*index as usize] += 1);
-                    total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
-
-                    kmer_cache.insert(kmer, Arc::new(indicies))
-                }
+                    .for_each(|block_iter| match block_iter {
+                        BlockIter::BitIter((bit_iter, start_i)) => {
+                            bit_iter.map(|i| i + start_i).for_each(|i| {
+                                num_hits[i] += 1;
+                            });
+                        }
+                        BlockIter::Range((start_i, end_i)) => {
+                            num_hits[start_i..end_i].iter_mut().for_each(|count| {
+                                *count += 1;
+                            });
+                        }
+                    });
+                total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
             }
             // Increment the total number of queries
             n_total += 1;
@@ -408,11 +410,7 @@ impl Database {
             hit_lookup_start.elapsed().as_secs_f64(),
         ));
 
-        stats.push(("time to collect indices", total_collect_indices_time));
         stats.push(("time to increment counts", total_increment_counts_time));
-
-        stats.push(("kmer queries", n_total as f64));
-        stats.push(("cache hits", cache_hits as f64));
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types

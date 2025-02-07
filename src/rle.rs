@@ -1,6 +1,6 @@
 use bit_iter::BitIter;
 use serde::{Deserialize, Serialize};
-use std::{ops::Range, slice::Iter};
+use std::slice::Iter;
 use tracing::warn;
 
 pub const MAX_RUN: u16 = (1 << 14) - 1;
@@ -314,16 +314,14 @@ fn create_uncompressed_from(buffer: &Vec<Block>) -> u16 {
     Block::Uncompressed(uncompressed).to_u16()
 }
 
-enum CurrBlockIter {
-    None,
-    Range(Range<usize>),
-    BitIter(BitIter<u16>),
+pub enum BlockIter {
+    Range((usize, usize)),
+    BitIter((BitIter<u16>, usize)),
 }
 
 pub struct RunLengthEncodingIter<'a> {
     curr_i: usize,
     blocks_iter: Iter<'a, u16>,
-    curr_block_iter: CurrBlockIter,
 }
 
 impl<'a> RunLengthEncodingIter<'a> {
@@ -331,11 +329,10 @@ impl<'a> RunLengthEncodingIter<'a> {
         RunLengthEncodingIter {
             curr_i: 0,
             blocks_iter: blocks.iter(),
-            curr_block_iter: CurrBlockIter::None,
         }
     }
 
-    fn find_next(&mut self) -> Option<usize> {
+    fn find_next(&mut self) -> Option<BlockIter> {
         while let Some(run) = self.blocks_iter.next() {
             match Block::from_u16(*run) {
                 Block::Zeros(zeroes_count) => {
@@ -344,17 +341,14 @@ impl<'a> RunLengthEncodingIter<'a> {
                 }
                 Block::Ones(ones_count) => {
                     // If the run is ones, create a new curr_run_iter
-                    self.curr_block_iter =
-                        CurrBlockIter::Range(self.curr_i..self.curr_i + ones_count as usize);
+                    let return_block =
+                        BlockIter::Range((self.curr_i, self.curr_i + ones_count as usize));
 
                     // Increment curr_i
                     self.curr_i += ones_count as usize;
 
                     // Return the next value
-                    match &mut self.curr_block_iter {
-                        CurrBlockIter::Range(range) => return Some(range.next().unwrap()),
-                        _ => panic!("impossible case"),
-                    }
+                    return Some(return_block);
                 }
                 Block::Uncompressed(bits) => {
                     // Because of design choices, it is possible to have an empty
@@ -365,18 +359,14 @@ impl<'a> RunLengthEncodingIter<'a> {
                     }
 
                     // Otherwise, create new curr_run_iter
-                    self.curr_block_iter = CurrBlockIter::BitIter(BitIter::from(bits));
+                    let return_block = BlockIter::BitIter((BitIter::from(bits), self.curr_i));
 
                     // Do NOT increment curr_i here. BitIter is 0 indexed and needs the curr_i to
                     // return the correct value
+                    self.curr_i += MAX_UNCOMPRESSED_BITS;
 
                     // Return the next value
-                    match &mut self.curr_block_iter {
-                        CurrBlockIter::BitIter(bit_iter) => {
-                            return Some(bit_iter.next().unwrap() + self.curr_i)
-                        }
-                        _ => panic!("impossible case"),
-                    }
+                    return Some(return_block);
                 }
             }
         }
@@ -386,23 +376,9 @@ impl<'a> RunLengthEncodingIter<'a> {
 }
 
 impl<'a> Iterator for RunLengthEncodingIter<'a> {
-    type Item = usize;
+    type Item = BlockIter;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.curr_block_iter {
-            CurrBlockIter::None => self.find_next(),
-            CurrBlockIter::Range(range) => match range.next() {
-                None => self.find_next(),
-                x => x,
-            },
-            CurrBlockIter::BitIter(bit_iter) => match bit_iter.next() {
-                Some(value) => Some(value + self.curr_i),
-                None => {
-                    // Increment curr_i after a BitIter is exhausted
-                    self.curr_i += MAX_UNCOMPRESSED_BITS;
-                    self.find_next()
-                }
-            },
-        }
+        self.find_next()
     }
 }
