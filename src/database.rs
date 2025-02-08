@@ -183,7 +183,7 @@ impl Database {
         let total_set_bits = self
             .rles
             .par_iter()
-            .map(|rle| rle.iter().count())
+            .map(|rle| rle.collect_indices().len())
             .sum::<usize>();
         debug!("total set bits before compression {}", total_set_bits);
 
@@ -325,7 +325,7 @@ impl Database {
         let total_set_bits = self
             .rles
             .par_iter()
-            .map(|rle| rle.iter().count())
+            .map(|rle| rle.collect_indices().len())
             .sum::<usize>();
         info!("total set bits after compression {}", total_set_bits);
 
@@ -347,7 +347,7 @@ impl Database {
         let mut file2kmer_num = vec![0_usize; self.num_files()];
 
         self.rles.iter().for_each(|rle| {
-            rle.iter().for_each(|block_iter| match block_iter {
+            rle.block_iters().for_each(|block_iter| match block_iter {
                 BlockIter::BitIter((bit_iter, start_i)) => {
                     bit_iter.map(|i| i + start_i).for_each(|i| {
                         file2kmer_num[i] += 1;
@@ -393,9 +393,8 @@ impl Database {
             // Lookup the RLE and decompress
             if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
                 let increment_counts_start = Instant::now();
-                self.rles[*rle_index as usize]
-                    .iter()
-                    .for_each(|block_iter| match block_iter {
+                self.rles[*rle_index as usize].block_iters().for_each(
+                    |block_iter| match block_iter {
                         BlockIter::BitIter((bit_iter, start_i)) => {
                             bit_iter.map(|i| i + start_i).for_each(|i| {
                                 num_hits[i] += 1;
@@ -406,7 +405,8 @@ impl Database {
                                 *count += 1;
                             });
                         }
-                    });
+                    },
+                );
                 total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
             }
             // Increment the total number of queries

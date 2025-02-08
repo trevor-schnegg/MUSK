@@ -145,8 +145,8 @@ impl RunLengthEncoding {
         self.blocks
     }
 
-    pub fn iter(&self) -> RunLengthEncodingIter {
-        RunLengthEncodingIter::from_blocks(&self.blocks)
+    pub fn block_iters(&self) -> RunLengthEncodingBlockIter {
+        RunLengthEncodingBlockIter::from_blocks(&self.blocks)
     }
 
     pub fn from(blocks: Box<[u16]>) -> RunLengthEncoding {
@@ -319,14 +319,14 @@ pub enum BlockIter {
     BitIter((BitIter<u16>, usize)),
 }
 
-pub struct RunLengthEncodingIter<'a> {
+pub struct RunLengthEncodingBlockIter<'a> {
     curr_i: usize,
     blocks_iter: Iter<'a, u16>,
 }
 
-impl<'a> RunLengthEncodingIter<'a> {
+impl<'a> RunLengthEncodingBlockIter<'a> {
     pub fn from_blocks(blocks: &'a [u16]) -> Self {
-        RunLengthEncodingIter {
+        RunLengthEncodingBlockIter {
             curr_i: 0,
             blocks_iter: blocks.iter(),
         }
@@ -375,7 +375,7 @@ impl<'a> RunLengthEncodingIter<'a> {
     }
 }
 
-impl<'a> Iterator for RunLengthEncodingIter<'a> {
+impl<'a> Iterator for RunLengthEncodingBlockIter<'a> {
     type Item = BlockIter;
 
     fn next(&mut self) -> Option<Self::Item> {
