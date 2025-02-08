@@ -44,9 +44,16 @@ impl Database {
             (4_usize.pow(kmer_len as u32) - 4_usize.pow(kmer_len.div_ceil(2) as u32)) / 2;
 
         // Calculate probability of success (p) for each file
-        let p_values = file_bitmaps
+        let bitmap_sizes = file_bitmaps
             .par_iter()
-            .map(|bitmap| bitmap.len() as f64 / total_canonical_kmers as f64)
+            .map(|bitmap| bitmap.len())
+            .collect::<Vec<u64>>();
+
+        debug!("total bits set: {}", bitmap_sizes.iter().sum::<u64>());
+
+        let p_values = bitmap_sizes
+            .into_par_iter()
+            .map(|size| size as f64 / total_canonical_kmers as f64)
             .collect::<Box<[f64]>>();
 
         // Initialize the naive RLEs to be the maximum size
