@@ -391,9 +391,7 @@ impl Database {
         cutoff_threshold: BigExpFloat,
         n_max: u64,
         lookup_table: &Vec<BigExpFloat>,
-    ) -> (Option<(&str, usize)>, Vec<(&str, f64)>) {
-        let mut stats = vec![];
-
+    ) -> (Option<(&str, usize)>, (f64, f64)) {
         // Create a vector to store the hits
         let mut num_hits = vec![0_u64; self.num_files()];
 
@@ -401,14 +399,10 @@ impl Database {
         let mut n_total = 0_u64;
 
         let hit_lookup_start = Instant::now();
-
-        let mut total_increment_counts_time = 0.0;
-
         // For each kmer in the read
         for kmer in KmerIter::from(read, self.kmer_len, self.canonical).map(|k| k as u32) {
             // Lookup the RLE and decompress
             if let Some(rle_index) = self.kmer_to_rle_index.get(&kmer) {
-                let increment_counts_start = Instant::now();
                 self.rles[*rle_index as usize].block_iters().for_each(
                     |block_iter| match block_iter {
                         BlockIter::BitIter((bit_iter, start_i)) => {
@@ -423,17 +417,11 @@ impl Database {
                         }
                     },
                 );
-                total_increment_counts_time += increment_counts_start.elapsed().as_secs_f64();
             }
             // Increment the total number of queries
             n_total += 1;
         }
-        stats.push((
-            "time to lookup k-mers",
-            hit_lookup_start.elapsed().as_secs_f64(),
-        ));
-
-        stats.push(("time to increment counts", total_increment_counts_time));
+        let hit_lookup_time = hit_lookup_start.elapsed().as_secs_f64();
 
         // Classify the hits
         // Would do this using min_by_key but the Ord trait is difficult to implement for float types
@@ -445,25 +433,27 @@ impl Database {
             .enumerate()
             .filter_map(|(index, (n_hits, p))| {
                 // This check tries to save runtime in practice
-                // Only do probability computation if the p-value is going to be < 0.5
+                // Only find the probability if the p-value is going to be < 0.5
                 if *n_hits as f64 > (n_total as f64 * p) {
+                    // Adjust the number of hits (x) and number of queries (n) based on
+                    // the maximum number allowed
                     let x = if n_total <= n_max {
                         *n_hits
                     } else {
                         (*n_hits as f64 * n_max as f64 / n_total as f64).round() as u64
                     };
-
                     let n = if n_total <= n_max { n_total } else { n_max };
 
                     if n == n_max {
+                        // If n is the maximum number, lookup the probability
                         let lookup_position = (index * (n_max + 1) as usize) + x as usize;
                         Some((index, lookup_table[lookup_position]))
                     } else {
-                        // Perform the computation using f64
+                        // Otherwise, perform the computation using f64
                         let prob_f64 = Binomial::new(*p, n).unwrap().sf(x);
 
-                        // If the probability is greater than 0.0, use it
                         let prob_big_exp = if prob_f64 > 0.0 {
+                            // If the probability is greater than 0.0, use it
                             BigExpFloat::from_f64(prob_f64)
                         } else {
                             // Otherwise, compute the probability using big exp
@@ -485,10 +475,7 @@ impl Database {
                 (lowest_prob_index, lowest_prob) = (index, probability);
             }
         }
-        stats.push((
-            "time to calculate probabilities",
-            prob_calc_start.elapsed().as_secs_f64(),
-        ));
+        let prob_calc_time = prob_calc_start.elapsed().as_secs_f64();
 
         if lowest_prob < cutoff_threshold {
             (
@@ -496,10 +483,10 @@ impl Database {
                     &*self.files[lowest_prob_index],
                     self.tax_ids[lowest_prob_index],
                 )),
-                stats,
+                (hit_lookup_time, prob_calc_time),
             )
         } else {
-            (None, stats)
+            (None, (hit_lookup_time, prob_calc_time))
         }
     }
 }

@@ -5,7 +5,6 @@ use musk::io::{create_output_file, load_data_from_file};
 use musk::tracing::start_musk_tracing_subscriber;
 use musk::utility::get_fastq_iter_of_file;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::ops::Neg;
 use std::path::Path;
@@ -60,7 +59,7 @@ fn main() {
     // Create a mutex over a writer to allow multiple threads to write to the output file
     let output_writer = Mutex::new(BufWriter::new(output_file));
 
-    let total_stats_map = Mutex::new(HashMap::new());
+    let stats = Mutex::new((0, 0, 0.0, 0.0));
 
     info!("loading database at {:?}", database_path);
     let database = load_data_from_file::<Database>(database_path);
@@ -81,7 +80,7 @@ fn main() {
                 warn!("skipping the read that caused the error")
             }
             Ok(record) => {
-                let (classification, stats) = database.classify(
+                let (classification, (hit_lookup_time, prob_calc_time)) = database.classify(
                     record.seq(),
                     cutoff_threshold,
                     args.max_queries,
@@ -89,15 +88,12 @@ fn main() {
                 );
 
                 {
-                    let mut total_stats_map = total_stats_map.lock().unwrap();
-                    for (msg, stat) in stats {
-                        match total_stats_map.get_mut(msg) {
-                            None => {
-                                total_stats_map.insert(msg, stat);
-                            }
-                            Some(total_stat) => *total_stat += stat,
-                        }
-                    }
+                    let mut stats = stats.lock().unwrap();
+
+                    stats.0 += 1;
+                    stats.1 += record.seq().len();
+                    stats.2 += hit_lookup_time;
+                    stats.3 += prob_calc_time;
                 }
 
                 // Write classification result to output file
@@ -116,12 +112,29 @@ fn main() {
                 };
             }
         });
-    let classify_time = start_time.elapsed().as_secs_f64();
-    info!("classification time: {} s", classify_time);
 
-    for (msg, total_stat) in total_stats_map.into_inner().unwrap() {
-        debug!("total {}: {}", msg, total_stat);
-    }
+    // Log throughput statisitcs of classification
+    let classify_time = start_time.elapsed().as_secs_f64();
+    let stats = stats.into_inner().unwrap();
+    info!("classification took: {} s", classify_time);
+    info!(
+        "{} total reads classified ({} reads/s)",
+        stats.0,
+        stats.0 as f64 / classify_time
+    );
+    info!(
+        "{} total bp classified ({} Mbp/s)",
+        stats.1,
+        (stats.1 as f64 / classify_time) / 1_000_000.0
+    );
+    debug!(
+        "total thread time spent looking up kmer hits: {} s",
+        stats.2
+    );
+    debug!(
+        "total thread time spent calculating probabilities: {} s",
+        stats.3
+    );
 
     output_writer
         .into_inner()
