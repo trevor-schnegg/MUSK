@@ -43,20 +43,19 @@ impl Database {
         let total_canonical_kmers =
             (4_usize.pow(kmer_len as u32) - 4_usize.pow(kmer_len.div_ceil(2) as u32)) / 2;
 
-        // Calculate probability of success (p) for each file
+        // Calculate probability of success (p) for each file with a debug logging step in
+        // the middle
         let bitmap_sizes = file_bitmaps
             .par_iter()
             .map(|bitmap| bitmap.len())
             .collect::<Vec<u64>>();
-
         debug!("total bits set: {}", bitmap_sizes.iter().sum::<u64>());
-
         let p_values = bitmap_sizes
             .into_par_iter()
             .map(|size| size as f64 / total_canonical_kmers as f64)
             .collect::<Box<[f64]>>();
 
-        // Initialize the naive RLEs to be the maximum size
+        // Initialize the naive RLEs to be the maximum possible size
         let mut kmer_to_naive_rle =
             vec![NaiveRunLengthEncoding::new(); 4_usize.pow(kmer_len as u32)];
 
@@ -172,6 +171,7 @@ impl Database {
             }
         }
 
+        // Since we are frequently interested in unpacking zeros, create a function to do so
         fn get_zeros(run: Option<&Block>) -> Option<usize> {
             match run {
                 Some(Block::Zeros(x)) => Some(*x as usize),
@@ -183,7 +183,14 @@ impl Database {
         let total_set_bits = self
             .rles
             .par_iter()
-            .map(|rle| rle.collect_indices().len())
+            .map(|rle| {
+                rle.block_iters()
+                    .map(|block_iter| match block_iter {
+                        BlockIter::Range((start_i, end_i)) => end_i - start_i,
+                        BlockIter::BitIter((bit_iter, _start_i)) => bit_iter.count(),
+                    })
+                    .sum::<usize>()
+            })
             .sum::<usize>();
         debug!("total set bits before compression {}", total_set_bits);
 
@@ -232,6 +239,8 @@ impl Database {
                                         0
                                     };
                                 if should_compress(compression_level, set_bits, blocks_saved) {
+                                    // If we should compress, add the correct number of
+                                    // zeros to the run
                                     match compressed_blocks.last_mut().unwrap() {
                                         // intentionally overloading the variable `length` because they are the same thing
                                         Block::Zeros(length) => {
@@ -325,9 +334,16 @@ impl Database {
         let total_set_bits = self
             .rles
             .par_iter()
-            .map(|rle| rle.collect_indices().len())
+            .map(|rle| {
+                rle.block_iters()
+                    .map(|block_iter| match block_iter {
+                        BlockIter::Range((start_i, end_i)) => end_i - start_i,
+                        BlockIter::BitIter((bit_iter, _start_i)) => bit_iter.count(),
+                    })
+                    .sum::<usize>()
+            })
             .sum::<usize>();
-        info!("total set bits after compression {}", total_set_bits);
+        debug!("total set bits after compression {}", total_set_bits);
 
         let total_blocks = self
             .rles
